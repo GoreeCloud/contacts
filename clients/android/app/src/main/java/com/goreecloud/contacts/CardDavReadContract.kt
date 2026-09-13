@@ -14,6 +14,7 @@ data class CardDavReadContractSnapshot(
     val addressBookDiscovery: CardDavReadContractState,
     val contactListing: CardDavReadContractState,
     val contactDetail: CardDavReadContractState,
+    val nativeIdentityBindingContract: CardDavReadContractState,
     val nativeIdentitySession: CardDavReadContractState,
     val networkTransport: CardDavReadContractState,
 )
@@ -41,6 +42,7 @@ object CardDavReadContract {
         addressBookDiscovery = CardDavReadContractState.SOURCE_READY,
         contactListing = CardDavReadContractState.SOURCE_READY,
         contactDetail = CardDavReadContractState.SOURCE_READY,
+        nativeIdentityBindingContract = CardDavReadContractState.SOURCE_READY,
         nativeIdentitySession = CardDavReadContractState.IDENTITY_BLOCKED,
         networkTransport = CardDavReadContractState.TRANSPORT_BLOCKED,
     )
