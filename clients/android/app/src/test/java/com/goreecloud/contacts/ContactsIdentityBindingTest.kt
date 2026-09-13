@@ -22,6 +22,18 @@ class ContactsIdentityBindingTest {
     )
 
     @Test
+    fun canonicalIdentityContractCandidateIsPinnedExactly() {
+        assertEquals(
+            "goreecloud.identity.native-application-session/v1",
+            ContactsIdentityContractReference.SCHEMA,
+        )
+        assertEquals(
+            "62ad109809f2e479cf71a6327ffd0d4537a6b3df",
+            ContactsIdentityContractReference.CANDIDATE_REVISION,
+        )
+    }
+
+    @Test
     fun missingProofFailsClosed() {
         assertEquals(
             ContactsIdentityBindingDecision.MissingProof,
