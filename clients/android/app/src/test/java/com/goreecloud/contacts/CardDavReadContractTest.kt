@@ -54,11 +54,12 @@ class CardDavReadContractTest {
     }
 
     @Test
-    fun readContractDoesNotClaimNativeIdentityOrTransportAcceptance() {
+    fun identityContractCanBeSourceReadyWithoutClaimingLiveSessionOrTransport() {
         val readiness = CardDavReadContract.readiness()
         assertEquals(CardDavReadContractState.SOURCE_READY, readiness.addressBookDiscovery)
         assertEquals(CardDavReadContractState.SOURCE_READY, readiness.contactListing)
         assertEquals(CardDavReadContractState.SOURCE_READY, readiness.contactDetail)
+        assertEquals(CardDavReadContractState.SOURCE_READY, readiness.nativeIdentityBindingContract)
         assertEquals(CardDavReadContractState.IDENTITY_BLOCKED, readiness.nativeIdentitySession)
         assertEquals(CardDavReadContractState.TRANSPORT_BLOCKED, readiness.networkTransport)
     }
