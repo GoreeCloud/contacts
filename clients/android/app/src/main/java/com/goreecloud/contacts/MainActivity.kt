@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MaterialTheme {
+            GlazeContactsTheme {
                 ContactsDevelopmentShell(ContactsCapabilitySnapshot.developmentShell())
             }
         }
@@ -66,6 +66,11 @@ private fun ContactsDevelopmentShell(capabilities: ContactsCapabilitySnapshot) {
             Text(
                 text = "Native Android Development client",
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "GLAZE UI ${GlazeContactsContract.VERSION} · ${GlazeContactsContract.ADOPTION_STATE.replace('_', ' ')}",
+                style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
