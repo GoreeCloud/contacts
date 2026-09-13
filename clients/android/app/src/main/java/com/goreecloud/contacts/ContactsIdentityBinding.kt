@@ -2,6 +2,11 @@ package com.goreecloud.contacts
 
 import java.time.Instant
 
+object ContactsIdentityContractReference {
+    const val SCHEMA = "goreecloud.identity.native-application-session/v1"
+    const val CANDIDATE_REVISION = "62ad109809f2e479cf71a6327ffd0d4537a6b3df"
+}
+
 /**
  * Non-secret proof metadata that a future GoreeCloud Identity exchange must establish for the
  * native Contacts client. This model intentionally contains no token, cookie, password, CardDAV
@@ -39,6 +44,11 @@ sealed interface ContactsIdentityBindingDecision {
     data object Expired : ContactsIdentityBindingDecision
 }
 
+/**
+ * Pure, fail-closed consumer acceptance policy aligned to the pinned GoreeCloud Identity
+ * native-application-session source contract candidate. A Bound result is not authentication and
+ * does not authorize CardDAV access or expand Contacts authority.
+ */
 object ContactsIdentityBindingPolicy {
     fun evaluate(
         proof: ContactsIdentityProof?,
