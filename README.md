@@ -1,6 +1,6 @@
 # GoreeCloud Contacts
 
-GoreeCloud Contacts is my private, self-hosted personal and family contact-management web application. I am building it as a GoreeCloud-native web interface for contacts stored through CardDAV.
+GoreeCloud Contacts is my private, self-hosted personal and family contact-management application. I am building it as a GoreeCloud-native contacts experience around CardDAV, with first-party web/server and native Android clients sharing Radicale as the authoritative contact service.
 
 ## Project Status
 
@@ -14,45 +14,54 @@ Milestone 4 Phase 4A expands the contact model with structured names, organizati
 
 ## Role
 
-I will use GoreeCloud Contacts to provide a modern browser-based interface for managing personal and family contacts while preserving CardDAV as the portable synchronization standard.
+I will use GoreeCloud Contacts to provide modern first-party web and native Android experiences for managing personal and family contacts while preserving CardDAV as the portable authoritative synchronization protocol.
 
 ## Architecture
 
 The application model is:
 
 ```text
-Approved browser
-  |
-  | HTTPS / opaque application session
-  v
-GoreeCloud Contacts
-  |
-  | CardDAV using the signed-in user's credentials
-  v
-Radicale
-  |
-  | CardDAV
-  v
-DAVx5
-  |
-  v
-Android Contacts Provider
+Approved web client                 GoreeCloud Contacts Android
+        |                                      |
+        | HTTPS / opaque session               | future accepted native Identity + bounded transport
+        v                                      v
+GoreeCloud Contacts web/server          GoreeCloud Contacts service contracts
+        |                                      |
+        +--------------- CardDAV --------------+
+                               |
+                               v
+                            Radicale
+                               |
+                               | optional CardDAV compatibility
+                               v
+                    External CardDAV clients (for example DAVx5)
+                               |
+                               | optional device integration
+                               v
+                    Android Contacts Provider
 ```
 
 Radicale remains the authoritative CardDAV service. GoreeCloud Contacts does not create a competing contact database for ordinary contact data.
 
-Each user authenticates with an approved Radicale/CardDAV identity. The backend performs CardDAV operations as that user and independently restricts requested address books and contact resources to collections discovered for the authenticated session.
+The first-party native Android line is the planned GoreeCloud mobile client. It targets GoreeCloud-owned service contracts and does not treat DAVx5 or the Android Contacts Provider as its source of truth. Any future Contacts Provider bridge must remain optional, permission-bound, user-controlled, and independently accepted.
+
+DAVx5 remains a compatible external CardDAV client for users who choose it; it is not the architecture or implementation dependency of the first-party GoreeCloud Contacts Android application.
+
+Each web user currently authenticates with an approved Radicale/CardDAV identity. The backend performs CardDAV operations as that user and independently restricts requested address books and contact resources to collections discovered for the authenticated session. The native Android line separately defines a fail-closed GoreeCloud Identity/session acceptance prerequisite and does not reuse browser cookies or embed reusable CardDAV credentials.
 
 ## Technology Direction
 
-- Frontend: React + TypeScript + Vite
+- Web frontend: React + TypeScript + Vite
 - Backend: Python + FastAPI
+- Native Android: Kotlin + Jetpack Compose
 - Contact protocol: CardDAV
 - Contact format: vCard
 - Authoritative contact service: Radicale
-- Android synchronization: DAVx5
-- Application authentication: Radicale-backed per-user sign-in
-- Application sessions: opaque server-side sessions
+- First-party Android synchronization direction: GoreeCloud Contacts native client with bounded GoreeCloud Identity, CardDAV service-contract transport, offline reconciliation, and optional Android Contacts Provider integration
+- External Android CardDAV compatibility: DAVx5 and other standards-compatible clients remain optional interoperability paths
+- Current web authentication: Radicale-backed per-user sign-in
+- Current web sessions: opaque server-side sessions
+- Native Android authentication direction: first-party GoreeCloud Identity/session exchange, independently accepted before network transport activates
 - Deployment: Docker and Docker Compose
 - Reverse proxy: Caddy
 - Development platform: GitHub
@@ -65,6 +74,8 @@ Technology selections remain subject to implementation and production-readiness 
 goreecloud-contacts/
 ├── frontend/
 ├── backend/
+├── clients/
+│   └── android/
 ├── docker/
 ├── tests/
 ├── docs/
@@ -78,6 +89,9 @@ goreecloud-contacts/
 │   ├── milestone-4-expanded-contact-model.md
 │   └── milestone-4-vcf-import-export.md
 ├── .github/workflows/ci.yml
+├── .github/workflows/android-client.yml
+├── .github/workflows/platform-contract.yml
+├── goreecloud.platform.yaml
 ├── .env.example
 ├── .gitignore
 ├── LICENSE
@@ -180,6 +194,12 @@ goreecloud-contacts/
 - Document rollback and recovery procedures.
 - Do not use production family contacts until the required production gates are complete.
 
+## Native Android Development Line
+
+The dedicated `clients/android/` application is being developed independently from the current browser milestones. It already establishes the first-party Kotlin/Compose shell, current Stable GLAZE UI V1.4 source boundary, bounded CardDAV read-contract modeling, and a fail-closed GoreeCloud Identity acceptance-proof contract.
+
+The native line still has no accepted Identity runtime, network transport, offline cache, background synchronization, contact mutation authority, or Android Contacts Provider bridge. Those capabilities must be implemented and validated independently before they are represented as available.
+
 ## Security Rules
 
 I will not commit passwords, active CardDAV credentials, tokens, private keys, session values, or other reusable credentials to this repository.
@@ -189,6 +209,8 @@ The browser must never receive a user's CardDAV password after sign-in. The curr
 Authentication does not grant unrestricted CardDAV access. Every address-book and contact request must remain within the collections authorized for the signed-in user.
 
 Development and validation must use isolated test accounts, test address books, and synthetic contact data whenever practical. Production family contact data must not be used as a convenient development dataset.
+
+Successful source/build CI does not make the native client production-approved, Release Candidate, or Stable.
 
 ## License
 
