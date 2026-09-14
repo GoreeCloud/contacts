@@ -185,7 +185,7 @@ object CardDavResponseContract {
 
     private fun validStringList(values: List<String>, maxItems: Int, maxLength: Int): Boolean =
         values.size <= maxItems && values.all {
-            validText(it, maxLength, allowEmpty = false, preserveOuterWhitespace = true)
+            validText(it, maxLength, allowEmpty = false)
         }
 
     private fun validOptionalText(
