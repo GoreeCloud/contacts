@@ -113,20 +113,86 @@ goreecloud-contacts/
 
 ### Milestone 2 — Conditional CardDAV Writes — Complete
 
-- Added guarded create, update, and delete operations through the GoreeCloud Contacts backend.
-- Preserved ETag-based conditional update/delete behavior to prevent silent overwrite of concurrent changes.
-- Kept write operations disabled by default outside explicit isolated validation.
+- Added controlled contact creation using `If-None-Match: *`.
+- Added ETag-protected contact updates and deletes using `If-Match`.
+- Converted stale CardDAV precondition failures into application conflicts instead of blind overwrites.
+- Added guarded browser create, edit, and delete controls.
+- Preserved contact UIDs during updates.
+- Added vCard serialization for formatted name, multiple email addresses, and multiple phone numbers.
+- Validated create, update, stale-ETag conflict, and delete behavior with isolated synthetic data.
+- Restored `CARDDAV_WRITE_ENABLED=false` after validation.
 
-### Milestone 3 — Authentication and Address-Book Isolation — Complete Development Validation
+### Milestone 3 — Authentication and Multi-User Isolation — Complete
 
-- Added Radicale-backed per-user authentication and opaque server-side application sessions.
-- Restricted address-book and contact access to collections discovered for the signed-in session.
-- Added logout/session-expiration behavior and live two-user negative authorization validation.
+- Replaced the single application-wide CardDAV identity with per-user Radicale sign-in.
+- Validated user credentials through CardDAV discovery.
+- Added opaque HTTP-only server-side sessions.
+- Kept CardDAV passwords out of browser-readable storage and source control.
+- Required authentication for CardDAV application routes.
+- Constructed CardDAV clients from the authenticated session user's credentials.
+- Restricted address-book access to collections discovered for the signed-in user.
+- Restricted contact-resource access to `.vcf` resources beneath those authorized collections.
+- Preserved the Milestone 2 write gate and ETag protections.
+- Added explicit logout and session-expiration handling.
+- Added credential-safe live validation for authenticated CardDAV behavior.
+- Validated a retained synthetic primary fixture through `goreecloud-contacts-test`.
+- Validated negative two-user isolation with `goreecloud-contacts-isolation-test`; the second user cannot discover the primary test address book and receives HTTP 403 when explicitly selecting it.
+- Validated session expiration with a temporary five-second TTL and restored the normal 28,800-second development TTL afterward.
+- Confirmed `CARDDAV_WRITE_ENABLED=false` remained the live safety state throughout authentication validation.
 
-### Milestone 4 — Expanded Contact Model and Portability — Active Development
+### Milestone 4 — Expanded Contact Model and Product Workflows — In Progress
 
-- Phase 4A expanded structured contact fields, detail retrieval, favorites, and browser management workflows.
-- Phase 4B is implementing and validating VCF import/export and broader portability behavior.
+#### Phase 4A — Expanded Contact Model
+
+- Added structured names, organizations, titles, postal addresses, birthdays, websites, notes, categories, favorites, and HTTP(S) photo-reference awareness where supported.
+- Added a full authenticated contact-detail endpoint while preserving per-user CardDAV authorization.
+- Expanded create/update serialization while retaining UID and ETag protections.
+- Added Contacts and Favorites views, broader search, read-only detail viewing, and expanded write-enabled editor workflows.
+- Added expanded parser/serializer tests and credential-safe live read/write validation tooling.
+- Passed isolated live read/detail validation using `goreecloud-contacts-test` with `CARDDAV_WRITE_ENABLED=false`.
+- Passed controlled synthetic live create/detail/update/stale-ETag/delete validation with an HTTP(S) photo reference.
+- Passed browser create, Favorites filtering, expanded edit, unfavorite, and delete validation using a disposable synthetic contact while preserving the retained Jordan Example fixture.
+- Restored `CARDDAV_WRITE_ENABLED=false` and `SESSION_TTL_SECONDS=28800` after live mutation validation.
+- Corrected structured API validation-error presentation after browser validation exposed `[object Object]` for FastAPI/Pydantic detail arrays.
+- Final exact-head CI passed and Phase 4A was squash-merged to `main` as `1e2675390e06e9485bf664b53b0552c2e4575cd4`.
+
+#### Phase 4B — VCF Import and Export
+
+- Implemented single-contact and full address-book VCF export using raw CardDAV vCard data.
+- Implemented VCF 3.0/4.0 import preview and validation before any mutation.
+- Required explicit destination address-book selection and selected preview records.
+- Preserved unknown source properties where possible and generated a UID only when missing.
+- Kept actual import behind `CARDDAV_WRITE_ENABLED` and created new resources with `If-None-Match: *`.
+- Passed 27 backend tests, frontend lint, frontend production build, and implementation-head GitHub Actions CI.
+- Passed isolated read-only export/preview, unsupported-version rejection, malformed-input rejection, controlled synthetic import, raw VCF round-trip preservation, and cleanup validation.
+- Confirmed the tested unknown `X-GOREECLOUD-TEST` property and source UID survived import through Radicale and subsequent raw export.
+- Restored `CARDDAV_WRITE_ENABLED=false` and `SESSION_TTL_SECONDS=28800` after controlled validation and confirmed Jordan Example remained the only retained test contact.
+- Final exact-head CI remains required after this validation-documentation update before merge.
+
+#### Phase 4C — Duplicate Detection and Merge
+
+- Add duplicate candidate detection using normalized names, emails, and telephone numbers.
+- Add user-reviewed merge previews and ETag-protected merge writes.
+- Delete superseded resources only after a merged resource is confirmed written successfully.
+
+#### Phase 4D — Product and Glaze UI Refinement
+
+- Continue responsive, dark-mode, keyboard, accessibility, and error-state refinement.
+- Align GoreeCloud Contacts with the GoreeCloud Glaze UI design language.
+- Refine category, favorite, and photo workflows after interoperability/privacy validation.
+- Normalize editor helper text and placeholders to the final supported photo-reference model.
+
+### Milestone 5 — Production Readiness and Deployment
+
+- Complete authentication, authorization, session, and security review.
+- Decide and validate the production session-storage model.
+- Validate CSRF protections for the final deployment architecture.
+- Build and validate the Docker deployment.
+- Validate backup and restoration requirements.
+- Publish through the approved private Caddy/DNS/NetBird service model.
+- Add monitoring and operational validation.
+- Document rollback and recovery procedures.
+- Do not use production family contacts until the required production gates are complete.
 
 ## Native Android Development Line
 
@@ -134,4 +200,18 @@ The dedicated `clients/android/` application is being developed independently fr
 
 The native line still has no accepted Identity runtime, network transport, offline cache, background synchronization, contact mutation authority, or Android Contacts Provider bridge. Those capabilities must be implemented and validated independently before they are represented as available.
 
+## Security Rules
+
+I will not commit passwords, active CardDAV credentials, tokens, private keys, session values, or other reusable credentials to this repository.
+
+The browser must never receive a user's CardDAV password after sign-in. The current Milestone 3 session model keeps the password only in backend process memory while the browser holds a random opaque HTTP-only session token.
+
+Authentication does not grant unrestricted CardDAV access. Every address-book and contact request must remain within the collections authorized for the signed-in user.
+
+Development and validation must use isolated test accounts, test address books, and synthetic contact data whenever practical. Production family contact data must not be used as a convenient development dataset.
+
 Successful source/build CI does not make the native client production-approved, Release Candidate, or Stable.
+
+## License
+
+GoreeCloud Contacts is licensed under the MIT License. See `LICENSE`.
