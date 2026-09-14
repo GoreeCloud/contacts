@@ -5,8 +5,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 THEME = ROOT / "clients/android/app/src/main/java/com/goreecloud/contacts/GlazeContactsTheme.kt"
 MAIN = ROOT / "clients/android/app/src/main/java/com/goreecloud/contacts/MainActivity.kt"
+READ_CONTRACT = ROOT / "clients/android/app/src/main/java/com/goreecloud/contacts/CardDavReadContract.kt"
+RESPONSE_CONTRACT = ROOT / "clients/android/app/src/main/java/com/goreecloud/contacts/CardDavResponseContract.kt"
 MANIFEST = ROOT / "clients/android/app/src/main/AndroidManifest.xml"
 DOC = ROOT / "docs/glaze-ui-v1.4-android-adoption.md"
+ANDROID_README = ROOT / "clients/android/README.md"
 VERSION = "1.4.0"
 REVISION = "84cb3db4884042f0fa25ed6d475a127fb110f596"
 
@@ -24,8 +27,11 @@ def forbid(text: str, fragment: str, label: str) -> None:
 def main() -> None:
     theme = THEME.read_text(encoding="utf-8")
     main_source = MAIN.read_text(encoding="utf-8")
+    read_contract = READ_CONTRACT.read_text(encoding="utf-8")
+    response_contract = RESPONSE_CONTRACT.read_text(encoding="utf-8")
     manifest = MANIFEST.read_text(encoding="utf-8")
     doc = DOC.read_text(encoding="utf-8")
+    android_readme = ANDROID_README.read_text(encoding="utf-8")
 
     require(theme, f'VERSION = "{VERSION}"', "theme")
     require(theme, f'REFERENCE_REVISION = "{REVISION}"', "theme")
@@ -42,14 +48,41 @@ def main() -> None:
     require(doc, "Radicale/CardDAV remains the sole authoritative contact store", "documentation")
     require(doc, REVISION, "documentation")
 
+    require(read_contract, 'responseAcceptance = CardDavReadContractState.SOURCE_READY', "read contract")
+    require(read_contract, 'nativeIdentitySession = CardDavReadContractState.IDENTITY_BLOCKED', "read contract")
+    require(read_contract, 'networkTransport = CardDavReadContractState.TRANSPORT_BLOCKED', "read contract")
+
+    for fragment in (
+        'ADDRESS_BOOK_FIELDS = setOf("href", "display_name")',
+        "CONTACT_SUMMARY_FIELDS",
+        "CONTACT_DETAIL_FIELDS",
+        "contact href does not match request",
+        "duplicate address-book href",
+        "duplicate contact href",
+        "href is a scheme-relative authority",
+        "unexpectedFields",
+    ):
+        require(response_contract, fragment, "response contract")
+    for forbidden in (
+        "HttpURLConnection",
+        "OkHttp",
+        "android.net.",
+        "java.net.http",
+    ):
+        forbid(response_contract, forbidden, "response contract")
+
     forbid(manifest, "android.permission.INTERNET", "manifest")
     forbid(manifest, "android.permission.READ_CONTACTS", "manifest")
     forbid(manifest, "android.permission.WRITE_CONTACTS", "manifest")
     require(manifest, 'android:allowBackup="false"', "manifest")
 
+    require(android_readme, "CardDAV response acceptance", "Android README")
+    require(android_readme, "no network authority", "Android README")
+
     print(
         "Contacts Android GLAZE UI V1.4 adoption validated: "
-        f"version={VERSION} revision={REVISION} providerAuthority=false conformance=false production=false"
+        f"version={VERSION} revision={REVISION} responseAcceptance=source-ready "
+        "network=false providerAuthority=false conformance=false production=false"
     )
 
 

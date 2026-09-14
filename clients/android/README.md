@@ -18,26 +18,68 @@ The current shell provides:
 - Explicit runtime capability state for GoreeCloud Identity, CardDAV read/write, offline cache, background synchronization, and the Android Contacts Provider bridge.
 - A pure Kotlin read-contract model for the existing session-bound `/api/carddav/address-books`, `/api/carddav/contacts`, and `/api/carddav/contact` endpoints.
 - Fail-closed CardDAV href construction: only bounded, canonical server-relative hrefs are accepted before query encoding; absolute/scheme-relative authorities and control-bearing values are rejected.
+- A source-ready, transport-neutral **CardDAV response acceptance** contract for the current backend `AddressBook`, `ContactSummary`, and `ContactDetail` shapes.
+- Exact response field allowlists for address-book, summary, detail, structured-name, and postal-address records so a future decoder can reject unknown authority/credential fields instead of silently trusting them.
+- Response validation that preserves opaque server-relative href identity, rejects duplicate resource hrefs, requires contact detail to match the requested href, bounds collection/text sizes, and rejects malformed/control-bearing presentation values.
 - Native Identity/session exchange and network transport remain blocked. The manifest still requests neither `INTERNET` nor Contacts Provider permissions.
 - Android backup disabled.
-- Unit coverage proving unavailable runtime capability is not advertised as accepted and the source-ready read contract cannot broaden origin/identity authority.
+- Unit coverage proving unavailable runtime capability is not advertised as accepted and source-ready request/response contracts cannot broaden origin/identity authority.
 - Gradle caching, parallel execution, and incremental Kotlin compilation.
 
-A source-ready endpoint contract is not a live CardDAV connection. The Android client does not copy browser cookies, embed reusable service credentials, invent bearer tokens, or contact Radicale directly.
+A source-ready endpoint or response contract is not a live CardDAV connection. The Android client has **no network authority** in this tranche: it does not copy browser cookies, embed reusable service credentials, invent bearer tokens, contact Radicale directly, or parse remote JSON.
+
+## CardDAV response acceptance boundary
+
+`CardDavResponseContract` models the backend's current read-only response shapes without importing transport or authentication behavior.
+
+The accepted address-book record contains only:
+
+- `href`; and
+- `display_name`.
+
+The accepted contact summary fields are:
+
+- `href`, `etag`, and `uid`;
+- `formatted_name`;
+- `emails` and `phones`;
+- `organization` and `title`;
+- `categories`;
+- `favorite`; and
+- `has_photo`.
+
+Contact detail adds only the current backend fields:
+
+- `structured_name`;
+- `addresses`;
+- `birthday`;
+- `websites`;
+- `note`; and
+- `photo`.
+
+The policy rejects absolute or scheme-relative hrefs, trim-dependent/control-bearing hrefs, duplicate address-book/contact identities, contact-detail href mismatch, oversized collections, malformed text, and unknown fields identified by the exact allowlists. It does not normalize a different host into an accepted resource identity.
+
+This acceptance layer intentionally does **not** verify an Identity session, authenticate CardDAV, establish transport security, cache contacts, write contacts, access Android Contacts Provider, or synchronize anything. A successful decision means only that already-decoded Development data conforms to the current minimized consumer shape.
+
+## GoreeCloud Identity boundary
+
+The source-ready native Identity proof contract remains separate from runtime authority. Exact principal/audience/lifetime metadata can be evaluated locally, but a deployed native Identity application registration, credential exchange, protected session runtime, and accepted CardDAV transport do not yet exist.
+
+Neither `CardDavReadContractState.SOURCE_READY` nor a successful `CardDavResponseDecision.Accepted` result grants authentication or contact authorization.
 
 ## Next milestones
 
 Advance each capability independently and preserve truthful state:
 
 1. Define and accept first-party GoreeCloud Identity/session exchange for native Contacts without reusable application-wide credentials.
-2. Add a bounded same-origin transport adapter and exercise read-only address-book discovery/contact listing against non-production Development data.
-3. Add authorized contact detail retrieval with data-minimized error handling.
-4. Add ETag/precondition-aware create/edit/delete with explicit conflict surfaces.
-5. Add protected bounded offline cache and deterministic reconciliation.
-6. Add WorkManager/background synchronization with power/network constraints.
-7. Add the optional Android Contacts Provider bridge with explicit permission and user controls.
-8. Complete repository-local GLAZE UI V1.4 application acceptance, accessibility, form-factor, and representative-device gates; human/manual V1.4.1 checks remain separate.
-9. Complete independent Privacy Shield, Wardveil Security, Everkeep, Manager, Mesh, and Identity acceptance where applicable.
-10. Complete APK/AAB signing, SBOM/provenance, rollback/recovery evidence, Release Candidate, production, and Stable gates.
+2. Add an exact-field decoder for the accepted address-book/summary/detail response shapes; reject unknown fields before `CardDavResponseContract` evaluation.
+3. Add a bounded same-origin authenticated transport adapter and exercise read-only address-book discovery/contact listing against non-production Development data.
+4. Add authorized contact detail retrieval with data-minimized error handling and feed only accepted responses into UI state.
+5. Add ETag/precondition-aware create/edit/delete with explicit conflict surfaces.
+6. Add protected bounded offline cache and deterministic reconciliation.
+7. Add WorkManager/background synchronization with power/network constraints.
+8. Add the optional Android Contacts Provider bridge with explicit permission and user controls.
+9. Complete repository-local GLAZE UI V1.4 application acceptance, accessibility, form-factor, and representative-device gates; human/manual V1.4.1 checks remain separate.
+10. Complete independent Privacy Shield, Wardveil Security, Everkeep, Manager, Mesh, Identity, and Sync acceptance where applicable.
+11. Complete APK/AAB signing, SBOM/provenance, rollback/recovery evidence, Release Candidate, production, and Stable gates.
 
 No source-local safeguard or successful CI run grants production, platform-system, or Stable acceptance by itself.
