@@ -14,7 +14,7 @@ The current shell provides:
 
 - Kotlin/Jetpack Compose application module targeting SDK 36 with minimum SDK 29 and Java 17.
 - A launchable native Contacts surface.
-- Repository-local GLAZE UI V1.4 / `1.4.0` adoption boundary pinned to the current Stable source authority while downstream conformance remains `ADOPTION_IN_PROGRESS`.
+- Repository-local GLAZE UI V1.4.1 / `1.4.1` adoption boundary pinned to Stable authority `4fab9da0fad2e5c974e0e66ec88632c61745751c`, with V1.4.0 retained as the immediate rollback baseline and downstream conformance still `ADOPTION_IN_PROGRESS`.
 - Explicit runtime capability state for GoreeCloud Identity, CardDAV read/write, offline cache, background synchronization, and the Android Contacts Provider bridge.
 - A pure Kotlin read-contract model for the existing session-bound `/api/carddav/address-books`, `/api/carddav/contacts`, and `/api/carddav/contact` endpoints.
 - Fail-closed CardDAV href construction: only bounded, canonical server-relative hrefs are accepted before query encoding; absolute/scheme-relative authorities and control-bearing values are rejected.
@@ -27,6 +27,8 @@ The current shell provides:
 - Gradle caching, parallel execution, and incremental Kotlin compilation.
 
 A source-ready endpoint or response contract is not a live CardDAV connection. The Android client has **no network authority** in this tranche: it does not copy browser cookies, embed reusable service credentials, invent bearer tokens, contact Radicale directly, or parse remote JSON.
+
+Shared GLAZE UI V1.4.1 qualification is not Contacts-local acceptance. Repository-local optical behavior, accessibility, representative-device behavior, performance, Human Visual Excellence, rollback, and release evidence remain separate fail-closed gates.
 
 ## CardDAV response acceptance boundary
 
@@ -78,7 +80,7 @@ Advance each capability independently and preserve truthful state:
 6. Add protected bounded offline cache and deterministic reconciliation.
 7. Add WorkManager/background synchronization with power/network constraints.
 8. Add the optional Android Contacts Provider bridge with explicit permission and user controls.
-9. Complete repository-local GLAZE UI V1.4 application acceptance, accessibility, form-factor, and representative-device gates; human/manual V1.4.1 checks remain separate.
+9. Complete repository-local GLAZE UI V1.4.1 rendered, accessibility, form-factor, representative-device, performance, Human Visual Excellence, and rollback acceptance.
 10. Complete independent Privacy Shield, Wardveil Security, Everkeep, Manager, Mesh, Identity, and Sync acceptance where applicable.
 11. Complete APK/AAB signing, SBOM/provenance, rollback/recovery evidence, Release Candidate, production, and Stable gates.
 
