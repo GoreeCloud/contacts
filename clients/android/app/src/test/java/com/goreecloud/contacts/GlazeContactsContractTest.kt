@@ -7,16 +7,17 @@ import org.junit.Test
 class GlazeContactsContractTest {
     @Test
     fun currentStableGlazeReferenceIsPinned() {
-        assertEquals("1.4.0", GlazeContactsContract.VERSION)
+        assertEquals("1.4.1", GlazeContactsContract.VERSION)
         assertEquals(
-            "84cb3db4884042f0fa25ed6d475a127fb110f596",
+            "4fab9da0fad2e5c974e0e66ec88632c61745751c",
             GlazeContactsContract.REFERENCE_REVISION,
         )
+        assertEquals("1.4.0", GlazeContactsContract.ROLLBACK_VERSION)
         assertEquals("ADOPTION_IN_PROGRESS", GlazeContactsContract.ADOPTION_STATE)
     }
 
     @Test
-    fun opticalAndHumanAcceptanceRemainFailClosed() {
+    fun sharedStableQualificationDoesNotCreateContactsAcceptance() {
         assertFalse(GlazeContactsContract.OPTICAL_ENGINE_ACCEPTED)
         assertFalse(GlazeContactsContract.REDUCED_TRANSPARENCY_ACCEPTED)
         assertFalse(GlazeContactsContract.INCREASED_CONTRAST_ACCEPTED)
