@@ -1,0 +1,22 @@
+name: Repository feature records
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate repository feature and changelog records
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s IMPLEMENTED-FEATURES.md
+          test -s PLANNED-FEATURES.md
+          test -s CHANGELOGS.md
+          test ! -e FEATURE-ROADMAP.md
+          ! grep -R --line-number --fixed-strings 'Drive `FEATURE-ROADMAP.docx` must remain materially synchronized' . --exclude-dir=.git || exit 1
