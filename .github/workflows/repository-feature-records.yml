@@ -29,4 +29,6 @@ jobs:
           test -s PLANNED-FEATURES.md
           test -s CHANGELOGS.md
           test ! -e FEATURE-ROADMAP.md
-          ! grep -R --line-number --fixed-strings 'Drive `FEATURE-ROADMAP.docx` must remain materially synchronized' . --exclude-dir=.git || exit 1
+          ! grep -R --line-number --fixed-strings 'Drive `FEATURE-ROADMAP.docx` must remain materially synchronized' . \
+            --exclude-dir=.git \
+            --exclude=repository-feature-records.yml || exit 1
