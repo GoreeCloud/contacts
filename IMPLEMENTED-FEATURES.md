@@ -3,8 +3,8 @@
 **Record type:** Repository implemented-feature inventory  
 **Repository:** `GoreeCloud/goreecloud-contacts`  
 **Lifecycle:** Development  
-**Migration state:** Candidate on `migration/repository-feature-records-20260922`; authoritative only after accepted merge to `main`.  
-**Evidence baseline:** authoritative `main` at `4e4cd3750c2ae03c769b7c30b0253b273887a7bc`.  
+**Migration state:** Repository-native authority accepted on `main` through PR #42; mapped Contacts Drive roadmap retired and independently verified not found.  
+**Product capability evidence baseline:** accepted application state at `4e4cd3750c2ae03c769b7c30b0253b273887a7bc`; governance migration accepted as `4fd378ab5aeec599192fe1b53fef2315a9d5a284`.  
 **Governing standard:** Standard — Repository Feature Tracking and Changelog Governance v1.0.
 
 ## Interpretation
@@ -47,7 +47,9 @@ Contacts remains Development. Source, CI, synthetic-data, and isolated test evid
 - Controlled synthetic validation established round-trip preservation for tested unknown properties and UID values.
 
 ### Repository controls
-- Root `FEATURE-ROADMAP.md` currently exists on accepted `main` as the legacy roadmap control being migrated by this branch.
+- Root `IMPLEMENTED-FEATURES.md`, `PLANNED-FEATURES.md`, and `CHANGELOGS.md` are the repository-native feature/changelog authorities established by PR #42.
+- Legacy root `FEATURE-ROADMAP.md` is retired and absent from authoritative `main`.
+- The migrated Contacts Drive `FEATURE-ROADMAP.docx` source (file ID `1iEju1z-62uoRMQc6GXX8kr5DazpdiZuk`) was permanently deleted only after authoritative readback and post-merge validation; independent Drive readback returned 404 Not Found.
 - Repository documentation records Development-only acceptance boundaries and synthetic/non-production validation rules.
 
 ## Implemented-but-incomplete capability families
