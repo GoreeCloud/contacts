@@ -3,15 +3,15 @@
 **Record type:** Repository planned/open feature inventory  
 **Repository:** `GoreeCloud/goreecloud-contacts`  
 **Lifecycle:** Development  
-**Migration state:** Candidate on `migration/repository-feature-records-20260922`; authoritative only after accepted merge to `main`.  
-**Evidence baseline:** authoritative `main` at `4e4cd3750c2ae03c769b7c30b0253b273887a7bc`; later Draft PRs remain candidate-only.  
+**Migration state:** Repository-native authority accepted on `main` through PR #42; mapped Contacts Drive roadmap retired and independently verified not found.  
+**Product capability evidence baseline:** accepted application state at `4e4cd3750c2ae03c769b7c30b0253b273887a7bc`; later Draft PRs remain candidate-only.  
 **Governing standard:** Standard — Repository Feature Tracking and Changelog Governance v1.0.
 
 ## Purpose and migration sources
 
 This file carries forward open, partial, blocked, deferred, acceptance-gated, and future obligations from:
-- the legacy root `FEATURE-ROADMAP.md`;
-- the Drive roadmap `GoreeCloud/Feature Roadmap/GoreeCloud Contacts/FEATURE-ROADMAP.docx` (file ID `1iEju1z-62uoRMQc6GXX8kr5DazpdiZuk`);
+- the retired legacy root `FEATURE-ROADMAP.md`;
+- the retired Drive roadmap `GoreeCloud/Feature Roadmap/GoreeCloud Contacts/FEATURE-ROADMAP.docx` (former file ID `1iEju1z-62uoRMQc6GXX8kr5DazpdiZuk`), migrated before deletion and independently verified 404 Not Found afterward;
 - authoritative `main` documentation and implementation evidence.
 
 Open Draft PRs #34–#41 are preserved as candidate evidence only. Their code or documentation must not be represented as accepted implementation until merged and verified on authoritative `main`.
@@ -65,7 +65,7 @@ Open Draft PRs #34–#41 are preserved as candidate evidence only. Their code or
 ## Repository-governance obligations
 
 - Do not recreate `FEATURE-ROADMAP.md` after verified migration retirement.
-- Do not recreate, synchronize, mirror, or retain a Contacts roadmap or changelog in Google Drive after the applicable source has been successfully migrated and retired.
+- Do not recreate, synchronize, mirror, or retain a Contacts roadmap or changelog in Google Drive after migration retirement.
 - Keep `IMPLEMENTED-FEATURES.md`, this file, and `CHANGELOGS.md` synchronized with accepted `main` lifecycle truth.
 - Preserve Draft/candidate evidence without promoting it into implemented state.
 

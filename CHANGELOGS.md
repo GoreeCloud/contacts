@@ -3,17 +3,27 @@
 **Record type:** Repository changelog and migration history  
 **Repository:** `GoreeCloud/goreecloud-contacts`  
 **Lifecycle:** Development  
-**Migration state:** Candidate on `migration/repository-feature-records-20260922`; authoritative only after accepted merge to `main`.  
-**Current accepted baseline:** `4e4cd3750c2ae03c769b7c30b0253b273887a7bc`.  
+**Migration state:** Repository-native authority accepted on `main` through PR #42; mapped Contacts Drive roadmap retired and independently verified not found.  
+**Governance migration merge:** `4fd378ab5aeec599192fe1b53fef2315a9d5a284`.  
 **Governing standard:** Standard — Repository Feature Tracking and Changelog Governance v1.0.
 
 ## Authority and interpretation
 
-This file records meaningful repository changes established by accepted repository state and retained project evidence. No dedicated `Change Log — Contacts` Drive source was resolved during the bounded migration inventory; therefore no Drive changelog is claimed as migrated or eligible for retirement in this tranche.
+This file records meaningful repository changes established by accepted repository state and retained project evidence. No dedicated `Change Log — Contacts` Drive source was resolved during the bounded migration inventory; therefore no Drive changelog is claimed as migrated or retired in this tranche.
 
 Open Draft PRs #34–#41 remain candidate-only. Their source/build evidence may be historically relevant, but it is not accepted implementation authority until merged and verified on authoritative `main`.
 
 ## Current repository changelog
+
+### September 22, 2026 — Verified repository-native migration and Drive roadmap retirement
+- PR #42 exact head `fd24a27363756e5c02c617da7d722ae0371a8de5` passed Continuous Integration #206 and Repository feature records #2 before squash merge.
+- PR #42 merged as `4fd378ab5aeec599192fe1b53fef2315a9d5a284`.
+- Authoritative `main` readback verified root `IMPLEMENTED-FEATURES.md`, `PLANNED-FEATURES.md`, and `CHANGELOGS.md`; legacy root `FEATURE-ROADMAP.md` returned 404 Not Found.
+- Push-triggered Continuous Integration #207 and Repository feature records #3 passed on exact merge `4fd378ab5aeec599192fe1b53fef2315a9d5a284`.
+- Only after those gates passed, the mapped Drive `FEATURE-ROADMAP.docx` source (file ID `1iEju1z-62uoRMQc6GXX8kr5DazpdiZuk`) was permanently deleted; independent Drive readback returned 404 Not Found.
+- No dedicated Contacts Drive changelog source was resolved, so no changelog deletion is claimed.
+- After Drive retirement, an accidental direct-write probe created root `_probe` on unprotected `main` at commit `d8752985eb73e80171e9f32ecede1f3da556a024`. It was immediately removed by `c0d6a128565940aa9251a508d27539aedd43d3f8`; comparison from migration merge `4fd378ab5aeec599192fe1b53fef2315a9d5a284` to cleanup commit `c0d6a128565940aa9251a508d27539aedd43d3f8` reports no file differences. This incident is branch-protection evidence only and does not change product or migration content.
+- Contacts remains Development. No production-family data approval, Release Candidate, production, or Stable claim is implied.
 
 ### September 22, 2026 — Repository-native feature/changelog migration candidate
 - Added root `IMPLEMENTED-FEATURES.md`, `PLANNED-FEATURES.md`, and `CHANGELOGS.md` on an isolated migration branch.
@@ -61,22 +71,14 @@ Open Draft PRs #34–#41 remain candidate-only. Their source/build evidence may 
 - Added responsive browser contact list/search, dependency locking, and CI.
 - Validated the browser-to-Radicale read path without production-family contact data.
 
-## Drive retirement gate
+## Repository-native authority
 
-The mapped Drive roadmap must not be deleted until:
-1. this migration is accepted through the repository workflow;
-2. applicable exact-head checks pass;
-3. the three root repository-native records are read back from authoritative `main`;
-4. retired root `FEATURE-ROADMAP.md` is confirmed absent;
-5. repository references to the retired roadmap model are reconciled; and
-6. applicable post-merge validation passes on the accepted revision.
+The repository migration and mapped Drive roadmap retirement are complete for this bounded Contacts tranche. The authoritative records are:
+- `IMPLEMENTED-FEATURES.md`;
+- `PLANNED-FEATURES.md`;
+- `CHANGELOGS.md`.
 
-Only after those gates pass may the mapped Drive roadmap be permanently deleted:
-- `GoreeCloud/Feature Roadmap/GoreeCloud Contacts/FEATURE-ROADMAP.docx` — file ID `1iEju1z-62uoRMQc6GXX8kr5DazpdiZuk`.
-
-No Contacts Drive changelog deletion is authorized by this record because no dedicated source was resolved in the bounded inventory.
-
-After any permitted Drive deletion, independently verify the source ID returns not found and record that retirement in a narrow follow-up repository change.
+Do not recreate root `FEATURE-ROADMAP.md` or a Drive-hosted Contacts roadmap/changelog master. No Contacts Drive changelog retirement is claimed because no dedicated source was resolved during this migration.
 
 ## Maintenance rule
 
