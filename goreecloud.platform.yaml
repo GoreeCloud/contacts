@@ -1,0 +1,164 @@
+schema_version: '0.4'
+
+component:
+  type: application
+  id: goreecloud-contacts
+  product_name: GoreeCloud Contacts
+  repository: GoreeCloud/contacts
+
+lifecycle: development
+version: '0.1.0'
+
+supported_platforms:
+  - web
+  - linux-server
+
+api:
+  versions: []
+  endpoints: []
+
+platform_systems:
+  manager:
+    result: applicable-blocked
+    version: null
+    evidence:
+      - README.md
+    notes: Contacts requires governed operational and lifecycle visibility, but no accepted GoreeCloud Manager runtime registration, status publication, administration, or production acceptance exists.
+
+  privacy_shield:
+    result: applicable-blocked
+    version: null
+    evidence:
+      - README.md
+      - docs/security.md
+    notes: Contacts implements privacy-conscious session and CardDAV isolation controls, but no accepted Privacy Shield runtime decision, purpose, minimization, retention, deletion, telemetry, or evidence integration exists.
+
+  wardveil_security:
+    result: applicable-blocked
+    version: null
+    evidence:
+      - README.md
+      - docs/security.md
+    notes: Contacts has application security and isolation controls, but no accepted Wardveil Security runtime integration, threat-protection evidence, or production security acceptance exists.
+
+  everkeep:
+    result: applicable-blocked
+    version: null
+    evidence:
+      - README.md
+    notes: Production backup, restoration, recovery, and continuity remain Milestone 5 work; accepted Everkeep integration and clean-target recovery evidence do not yet exist.
+
+  glaze_ui:
+    result: applicable-migration-required
+    version: null
+    evidence:
+      - README.md
+    notes: Contacts has an active browser interface and planned Glaze UI refinement, but current shared Stable Glaze UI 1.6.0 migration, rendered accessibility, representative-form-factor, performance, rollback, and production visual acceptance are not established.
+
+  mesh:
+    result: applicable-blocked
+    version: null
+    evidence:
+      - README.md
+    notes: No accepted GoreeCloud Mesh capability registration, dependency declaration, transport, event, or runtime coordination integration exists.
+    capabilities: []
+    dependencies: []
+    published_events: []
+    consumed_events: []
+
+  identity:
+    result: applicable-blocked
+    version: null
+    evidence:
+      - README.md
+      - docs/security.md
+    notes: Current authentication is Radicale-backed with opaque application sessions. Accepted GoreeCloud Identity integration, migration, authorization, session, device, revocation, and production acceptance remain incomplete.
+
+  policy:
+    result: applicable-blocked
+    version: null
+    evidence:
+      - README.md
+      - docs/security.md
+    notes: GoreeCloud Policy is applicable to authorization, sharing, retention, import/export, administrative, and operational decisions, but no accepted Policy runtime evaluation, distribution, enforcement coordination, explanation, freshness, exception, or evidence integration exists.
+
+  observability:
+    result: applicable-blocked
+    version: null
+    evidence:
+      - README.md
+    notes: Production monitoring and operational validation remain Milestone 5 work; no accepted GoreeCloud Observability health, metrics, diagnostics, dependency-health, freshness, alerting, privacy-minimized telemetry, or production operational acceptance exists.
+
+health:
+  health_endpoint: null
+  readiness_endpoint: null
+
+continuity:
+  backup:
+    required: true
+    requirements:
+      - Define and validate backups for application configuration, server-side session state where required, and the authoritative CardDAV service data needed for recoverability.
+      - Establish accepted Everkeep-compatible scheduling, retention, integrity, monitoring, and protected off-device recovery evidence before production approval.
+  restore:
+    required: true
+    requirements:
+      - Validate clean-target restoration of the supported deployment and authoritative CardDAV-backed contact environment before Stable or production acceptance.
+      - Preserve ETag and authorization safety during recovery and verify rollback procedures.
+  export:
+    required: true
+    requirements:
+      - Preserve user-controlled VCF export for authorized contacts and address books without exposing another user's contact data or credentials.
+      - Keep sessions, passwords, reusable credentials, and unrelated server state out of ordinary contact exports.
+  portability:
+    required: true
+    requirements:
+      - Preserve CardDAV and vCard interoperability as the portable contact boundary.
+      - Maintain round-trip handling for supported VCF data without creating a competing authoritative contact database.
+
+external_dependencies:
+  - name: Radicale
+    purpose: Authoritative CardDAV contact service and current authentication authority.
+    required: true
+    version_constraint: null
+  - name: Caddy
+    purpose: Reviewed reverse-proxy and HTTPS publication layer for the planned deployment model.
+    required: false
+    version_constraint: null
+  - name: DAVx5
+    purpose: External Android CardDAV synchronization client for interoperating with the Android Contacts Provider.
+    required: false
+    version_constraint: null
+
+compatibility:
+  platform_contract: '0.4'
+  glaze_ui_required: '1.6.0'
+  requires:
+    - goreecloud-platform-contract==0.4
+    - glaze-ui==1.6.0
+  provides:
+    - goreecloud-contacts-carddav-web-development
+
+evidence:
+  acceptance_tests: []
+  release: []
+
+conformance:
+  status: nonconformant
+  validated_at: null
+  evidence:
+    - README.md
+    - docs/security.md
+    - docs/architecture.md
+    - docs/carddav.md
+  blockers:
+    - GoreeCloud Contacts remains Active Development and Platform Contract declaration does not authorize Release Candidate, production deployment, production-family contact use, or Stable qualification.
+    - Current shared Stable Glaze UI 1.6.0 migration and Contacts-specific rendered, accessibility, responsive/form-factor, performance, rollback, and production visual acceptance are incomplete.
+    - GoreeCloud Manager operational integration and acceptance are incomplete.
+    - Privacy Shield runtime integration and privacy acceptance are incomplete.
+    - Wardveil Security runtime integration and production security acceptance are incomplete.
+    - Everkeep integration plus accepted production backup and clean-target recovery evidence are incomplete.
+    - GoreeCloud Mesh registration, dependency/event integration, and runtime acceptance are incomplete.
+    - GoreeCloud Identity integration and migration beyond the current Radicale-backed authentication/session model are incomplete.
+    - GoreeCloud Policy runtime evaluation, enforcement coordination, explanation, freshness, exception handling, and evidence integration are incomplete.
+    - GoreeCloud Observability health, metrics, diagnostics, dependency-health, freshness, alerting, privacy-minimized telemetry, and production operational acceptance are incomplete.
+    - Milestone 5 production security, session, CSRF, deployment, backup, monitoring, rollback, and operational validation remain incomplete.
