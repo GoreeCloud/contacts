@@ -1,0 +1,28 @@
+# yamllint disable rule:line-length
+name: Platform Contract
+
+"on":
+  pull_request:
+    paths:
+      - goreecloud.platform.yaml
+      - .github/workflows/platform-contract.yml
+  push:
+    branches:
+      - main
+    paths:
+      - goreecloud.platform.yaml
+      - .github/workflows/platform-contract.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Platform Contract 0.4 enforces the authoritative nine-system model and
+# current shared Stable Glaze UI 1.6.0 consumer baseline. This validation is
+# declaration/conformance evidence only and does not establish runtime
+# acceptance, production approval, Release Candidate status, or Stable status.
+jobs:
+  validate:
+    uses: GoreeCloud/GoreeCloud/.github/workflows/reusable-platform-manifest.yml@e49b9afdea094c96a36a0457b1603f2fa8e8fa6b
+    with:
+      manifest-path: goreecloud.platform.yaml
