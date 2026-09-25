@@ -193,3 +193,14 @@ Development and validation must use isolated test accounts, test address books, 
 ## License
 
 GoreeCloud Contacts is licensed under the MIT License. See `LICENSE`.
+
+
+## Project governance
+
+- [PROJECT-SPECIFICATIONS.md](PROJECT-SPECIFICATIONS.md) — authoritative project scope, requirements, data-authority, licensing-state, privacy/security, portability, and acceptance requirements.
+- [PROJECT-RECORD.md](PROJECT-RECORD.md) — significant project history, licensing/candidate context, governance transitions, and migration evidence.
+- [IMPLEMENTED-FEATURES.md](IMPLEMENTED-FEATURES.md) — accepted Development capability inventory.
+- [PLANNED-FEATURES.md](PLANNED-FEATURES.md) — open, partial, blocked, and future obligations.
+- [CHANGELOGS.md](CHANGELOGS.md) — accepted meaningful change history.
+
+Google Drive is not a parallel authority for the Contacts project specification or project record. Open Draft pull requests remain candidate evidence until merged and verified on `main`.
