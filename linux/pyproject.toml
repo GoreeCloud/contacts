@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "goreecloud-contacts-linux"
+version = "0.1.0.dev0"
+description = "GoreeCloud Contacts native GTK4/libadwaita Linux development preview"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{name = "GoreeCloud"}]
+dependencies = []
+
+[project.scripts]
+goreecloud-contacts = "goreecloud_contacts.app:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["goreecloud_contacts*"]
+
+[tool.setuptools.package-data]
+goreecloud_contacts = ["assets/*.svg"]

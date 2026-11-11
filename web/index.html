@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'">
+  <title>Contacts · GoreeCloud</title>
+  <link rel="icon" type="image/svg+xml" href="./assets/goreecloud-logo.svg">
+  <link rel="stylesheet" href="./gc-ui/tokens.css">
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./main.mjs"></script>
+</head>
+<body class="gc-app">
+<div class="shell">
+  <aside class="rail" aria-label="Application navigation">
+    <a class="brand" href="./" aria-label="GoreeCloud Contacts home"><img class="brand-mark" src="./assets/goreecloud-logo.svg" alt=""><span><strong>GoreeCloud</strong><small>CONTACTS</small></span></a>
+    <div class="rail-section-label">WORKSPACE</div>
+    <div class="rail-current"><span aria-hidden="true">◉</span> People <span class="rail-indicator">Current</span></div>
+    <div class="rail-card">
+      <div class="rail-card-icon" aria-hidden="true">◇</div>
+      <strong>Your contacts stay yours.</strong>
+      <p>Stored in this browser profile. No accounts, telemetry, or automatic uploads.</p>
+    </div>
+    <div class="rail-bottom">GoreeCloud UI · Local-first preview</div>
+  </aside>
+  <main class="workspace">
+    <header class="topbar">
+      <span class="eyebrow">YOUR PERSONAL SPACE <span class="divider-dot" aria-hidden="true">·</span> PEOPLE</span>
+      <span class="privacy-pill"><span class="privacy-dot"></span> Browser-only data</span>
+    </header>
+    <section class="intro">
+      <div>
+        <p class="kicker">CONTACT DIRECTORY</p>
+        <h1>People, beautifully organized.</h1>
+        <p class="subtitle">The familiar faces and important details you choose to keep close.</p>
+      </div>
+      <button type="button" id="newContact" class="primary" disabled><span aria-hidden="true">＋</span> New contact</button>
+    </section>
+    <section class="panel" aria-labelledby="directoryTitle">
+      <div class="panel-head">
+        <div><h2 id="directoryTitle">Your directory</h2><p id="countLabel" class="muted" aria-live="polite">Checking private storage…</p></div>
+        <div class="head-actions">
+          <button id="importBackup" type="button" class="quiet" disabled>Import backup</button>
+          <button id="exportBackup" type="button" class="quiet" disabled>Back up</button>
+          <button id="exportCard" type="button" class="quiet" disabled>Export vCard</button>
+        </div>
+      </div>
+      <div class="filters">
+        <label class="search-wrap" for="searchInput"><span class="search-icon" aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="Search people, phone, or organization" autocomplete="off" aria-label="Search your contacts"></label>
+        <div class="segments" role="group" aria-label="Contact filters">
+          <button type="button" id="allFilter" aria-pressed="true" class="segment active">All contacts</button>
+          <button type="button" id="favoritesFilter" aria-pressed="false" class="segment">Favorites</button>
+        </div>
+      </div>
+      <div id="contactList" class="directory" role="list" aria-label="Contacts"></div>
+      <div id="emptyState" class="empty-state" hidden>
+        <div class="empty-illustration" aria-hidden="true">✧</div>
+        <h3 id="emptyTitle">Make this space yours.</h3>
+        <p id="emptyMessage">Add a contact to start your private directory.</p>
+        <button type="button" class="secondary" id="emptyAdd" disabled>Add your first contact</button>
+      </div>
+    </section>
+    <p class="footer-note">Development preview · No live CardDAV sync · Browser profile data is not encrypted by this app. Export your own backup before clearing browser data.</p>
+  </main>
+</div>
+<dialog id="editorDialog" aria-labelledby="editorTitle" class="editor">
+  <form id="editorForm" novalidate>
+    <div class="dialog-top"><div><p class="kicker">CONTACT DETAILS</p><h2 id="editorTitle">New contact</h2></div><button class="icon-button" type="button" id="cancelEditor" aria-label="Close editor">×</button></div>
+    <p class="dialog-sub">Only the fields shown here are saved in this browser.</p>
+    <div class="form-grid">
+      <label class="field"><span>Full name <b aria-hidden="true">*</b></span><input name="name" id="contactName" required maxlength="160" autocomplete="off"></label>
+      <label class="field"><span>Phone</span><input name="phone" maxlength="80" type="tel" autocomplete="off"></label>
+      <label class="field"><span>Email</span><input name="email" maxlength="254" type="email" autocomplete="off"></label>
+      <label class="field"><span>Organization</span><input name="organization" maxlength="160" autocomplete="off"></label>
+      <label class="favorite-toggle"><input type="checkbox" name="favorite"> <span>Keep in Favorites</span></label>
+    </div>
+    <p class="form-error" id="formError" role="alert" hidden></p>
+    <div class="dialog-actions"><button type="button" class="quiet" id="discardEditor">Cancel</button><button type="submit" class="primary" id="saveContact">Save contact</button></div>
+  </form>
+</dialog>
+<dialog id="deleteDialog" class="confirm" aria-labelledby="deleteTitle">
+  <div class="dialog-top"><h2 id="deleteTitle">Delete this contact?</h2></div>
+  <p>It will be removed from this browser profile. This can't be undone unless you have a backup.</p>
+  <div class="dialog-actions"><button id="cancelDelete" type="button" class="quiet">Keep contact</button><button id="confirmDelete" type="button" class="danger">Delete contact</button></div>
+</dialog>
+<input type="file" id="importFile" accept=".json,application/json" hidden>
+<div class="announcer" id="announcer" role="status" aria-live="polite"></div>
+</body>
+</html>

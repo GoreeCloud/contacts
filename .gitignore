@@ -6,3 +6,14 @@
 *.apk
 *.aab
 .DS_Store
+
+# Linux, local tests, venvs and generated private data
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+.coverage
