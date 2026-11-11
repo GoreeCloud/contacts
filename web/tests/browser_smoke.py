@@ -8,7 +8,6 @@ browser profile, personal contacts, real accounts, telemetry or network backend.
 """
 from __future__ import annotations
 
-from contextlib import ExitStack
 import importlib.util
 import json
 import os
@@ -99,6 +98,22 @@ class WebDriver:
                 return
             time.sleep(0.1)
         raise AssertionError("Real browser UI condition was not met: " + repr(last))
+
+    def accept_confirm(self, contains: str, timeout: float = 10):
+        until=time.monotonic()+timeout
+        while time.monotonic()<until:
+            try:
+                message=self.call("GET",f"/session/{self.session}/alert/text")
+            except RuntimeError as error:
+                if "no such alert" in str(error).lower():
+                    time.sleep(0.1)
+                    continue
+                raise
+            if contains not in message:
+                raise AssertionError("Unexpected browser confirmation prompt")
+            self.call("POST",f"/session/{self.session}/alert/accept",{})
+            return
+        raise AssertionError("Expected import confirmation was not displayed")
 
     def close(self):
         if self.session is not None:
@@ -208,13 +223,64 @@ def smoke() -> None:
             webdriver.wait("return document.getElementById('countLabel').textContent",
                            "0 contacts saved locally")
 
+            # Exercise the actual new limited vCard upload + browser-native
+            # consent alert, not merely the shared parser in a Node test.
+            webdriver.wait(
+                "return !!document.getElementById('importCard') && !document.getElementById('importCard').disabled",
+                True)
+            limited_vcard=(
+                "BEGIN:VCARD\r\nVERSION:3.0\r\n"
+                "N:Synthetic Imported Contact;;;;\r\n"
+                "FN:Synthetic Imported Contact\r\n"
+                "TEL:+1 555 0101\r\n"
+                "EMAIL:import@example.invalid\r\n"
+                "ORG:GoreeCloud\r\nEND:VCARD\r\n"
+            )
+            def offer_vcard(source):
+                script=(
+                    "const input=document.getElementById('importCardFile');"
+                    "const value=new File([" + json.dumps(source) +
+                    "],'synthetic.vcf',{type:'text/vcard'});"
+                    "const transfer=new DataTransfer();transfer.items.add(value);"
+                    "input.files=transfer.files;"
+                    "input.dispatchEvent(new Event('change',{bubbles:true}));"
+                )
+                try:
+                    webdriver.execute(script)
+                except RuntimeError as error:
+                    if "unexpected alert open" not in str(error).lower():
+                        raise
+            offer_vcard(limited_vcard)
+            webdriver.accept_confirm("Import 1 limited vCards")
+            webdriver.wait("return document.getElementById('countLabel').textContent",
+                           "1 contact saved locally")
+            webdriver.wait("return document.querySelector('.person-name')?.textContent",
+                           "Synthetic Imported Contact")
+            # Duplicate imported visible details must not create an extra record.
+            offer_vcard(limited_vcard)
+            webdriver.wait(
+                "return document.getElementById('announcer').textContent",
+                "Duplicate visible contact details; no import performed")
+            assert webdriver.execute(
+                "return document.getElementById('contactList').childElementCount"
+            )==1
+            # Rich vCards are rejected, never quietly truncated into six fields.
+            offer_vcard(limited_vcard.replace("END:VCARD",
+                                              "NOTE:private info must not be lost\r\nEND:VCARD"))
+            webdriver.wait(
+                "return document.getElementById('announcer').textContent",
+                "Unsupported or duplicate vCard property")
+            assert webdriver.execute(
+                "return document.getElementById('contactList').childElementCount"
+            )==1
+
             # Basic small-screen horizontal overflow regression.
             webdriver.call("POST", f"/session/{webdriver.session}/window/rect",
                            {"width": 390, "height": 800})
             assert webdriver.execute(
                 "return document.documentElement.scrollWidth <= window.innerWidth + 3"
             ), "Unexpected horizontal overflow in compact browser layout"
-            print("GOREECLOUD_CONTACTS_REAL_CHROME_INDEXEDDB_EDITOR_FAVORITES_SEARCH_DELETE_PASS")
+            print("GOREECLOUD_CONTACTS_REAL_CHROME_INDEXEDDB_VCARD_EDITOR_FAVORITES_SEARCH_DELETE_PASS")
         finally:
             webdriver.close()
             driver_process.terminate()
