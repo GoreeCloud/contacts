@@ -1,0 +1,134 @@
+name: Contacts web and native Linux development checks
+on:
+  pull_request:
+    paths:
+      - "web/**"
+      - "linux/**"
+      - "shared/**"
+      - "android/**"
+      - "docs/PLATFORMS.md"
+      - "README.md"
+      - ".github/workflows/platforms.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "linux/**"
+      - "shared/**"
+      - "android/**"
+      - "docs/PLATFORMS.md"
+      - "README.md"
+      - ".github/workflows/platforms.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contacts-three-platform-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Browser model, private HTTP and asset provenance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Verify GC UI and umbrella identity assets
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' '94db1f214858bb05373058c92ab47cfb41c49a70f90bceb18b90854e75ef35ef' 'web/gc-ui/tokens.css' | sha256sum -c -
+          printf '%s  %s\n' '544e1e83ea4d8c67314286d7cc637b5cfc7c78d122c9595eba259c7075f654c6' 'web/assets/goreecloud-logo.svg' | sha256sum -c -
+          test -f web/gc-ui/LICENSE
+          printf '%s  %s\n' '544e1e83ea4d8c67314286d7cc637b5cfc7c78d122c9595eba259c7075f654c6' 'linux/goreecloud_contacts/assets/logo.svg' | sha256sum -c -
+          ! grep -Eiq '<script|onload=|onerror=|href="https?://' web/assets/goreecloud-logo.svg
+      - name: Web syntax and portable model tests
+        run: |
+          set -euo pipefail
+          for file in web/*.mjs web/tests/*.mjs; do node --check "$file"; done
+          node --test web/tests/*.test.mjs
+      - name: Loopback HTTP headers and no-network API tests
+        run: python3 -m unittest discover -s web/tests -p 'test_*.py' -v
+
+  linux-core:
+    name: Linux storage, installer, portability and safety
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Syntax, isolated storage and cross-language contract tests
+        env:
+          PYTHONPATH: linux
+          PYTHONDONTWRITEBYTECODE: '1'
+          PYTHONNOUSERSITE: '1'
+        run: |
+          set -euo pipefail
+          python3 -m compileall -q linux/goreecloud_contacts linux/install_user.py
+          python3 -m unittest discover -s linux/tests -p 'test_*.py' -v
+
+  linux-native-gtk:
+    name: Real GTK4/libadwaita Xvfb smoke (required)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Require native GTK and libadwaita packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! /usr/bin/python3 -c 'import gi;gi.require_version("Gtk","4.0");gi.require_version("Adw","1");from gi.repository import Gtk,Adw' || ! command -v xvfb-run >/dev/null 2>&1; then
+            sudo apt-get update -o Acquire::Retries=3
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 xvfb xauth
+          fi
+          command -v xvfb-run
+          /usr/bin/python3 -c 'import gi;gi.require_version("Gtk","4.0");gi.require_version("Adw","1");from gi.repository import Gtk,Adw;print(Gtk.get_major_version())'
+      - name: Create native window and exercise synthetic directory
+        env:
+          PYTHONPATH: linux
+          PYTHONNOUSERSITE: '1'
+          PYTHONDONTWRITEBYTECODE: '1'
+          GDK_BACKEND: x11
+        run: |
+          set -euo pipefail
+          timeout 70s xvfb-run -a /usr/bin/python3 linux/tests/gtk_smoke.py
+
+  android-integrity:
+    name: Existing Android application identity preserved
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify original native Android package and permissions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          gradle=Path("app/build.gradle.kts").read_text()
+          assert 'applicationId = "com.goreecloud.contacts"' in gradle
+          assert 'minSdk = 26' in gradle and 'targetSdk = 35' in gradle
+          manifest=ET.parse("app/src/main/AndroidManifest.xml").getroot()
+          ns="{http://schemas.android.com/apk/res/android}"
+          assert [el.get(ns+"name") for el in manifest.findall("uses-permission")] == ["android.permission.READ_CONTACTS"]
+          assert manifest.find("application").get(ns+"allowBackup")=="false"
+          print("Existing native Android identity and privacy boundary preserved")
+          PY

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=GoreeCloud Contacts
+GenericName=Contact Manager
+Comment=Private offline-first personal contacts
+Exec=goreecloud-contacts
+Icon=contact-new
+Terminal=false
+Categories=Office;Utility;
+Keywords=contacts;people;addressbook;
+StartupNotify=true

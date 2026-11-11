@@ -1,0 +1,21 @@
+{
+  "format": "goreecloud.contacts.v1",
+  "contacts": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "name": "Zoë García",
+      "phone": "+1 (205) 555-0100",
+      "email": "zoe@example.invalid",
+      "organization": "GoreeCloud",
+      "favorite": true
+    },
+    {
+      "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "name": "André North",
+      "phone": "",
+      "email": "",
+      "organization": "",
+      "favorite": false
+    }
+  ]
+}

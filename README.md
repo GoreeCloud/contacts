@@ -1,4 +1,20 @@
-# GoreeCloud Contacts — Android
+# GoreeCloud Contacts
+
+**Three-platform development source:** [Web](web/), [native Linux](linux/) and [native Android](android/) in this public GoreeCloud Contacts repository. Each is an original user-facing client; this repository does not claim production deployment, installed-device acceptance, encryption at rest or automatic cross-device sync.
+
+| Client | Source | Current behavior and storage |
+| --- | --- | --- |
+| [Web app](web/) | web/index.html, web/main.mjs | Local-first browser directory, search, favorites, editor, explicit JSON import/backup and limited vCard export; IndexedDB in one browser profile |
+| [Linux app](linux/) | linux/goreecloud_contacts/ | Native GTK4/libadwaita directory, editor, favorites, delete confirmation and private SQLite; optional guarded per-user desktop launcher |
+| [Android app](android/) | Existing app/ root Gradle project | Native Kotlin Android Contacts Provider client, user-confirmed intents and scoped export; no Internet permission |
+
+Web and Linux share an explicitly versioned **manual transfer** contract ([details](shared/CONTRACT.md)). Android retains its original platform-specific data model and behavior. No automatic sync, CardDAV account access, contacts upload, or hidden data sharing has been added. The user must opt in to file export/import. Exported files are plaintext, and browser/SQLite storage is not encrypted by this application.
+
+**Run locally:** Web: python3 web/server.py --port 8765 (binds 127.0.0.1 only). Linux: PYTHONPATH=linux /usr/bin/python3 -m goreecloud_contacts.app (GTK4/libadwaita dependencies required). Android: gradle :app:testDebugUnitTest :app:assembleDebug :app:lintDebug from the repository root. See [platform matrix and release gates](docs/PLATFORMS.md).
+
+---
+
+## Android application — existing native Kotlin implementation
 
 A standalone, native Kotlin Android application in the GoreeCloud Contacts repository. Originally developed as the independent `contacts/` module of `GoreeCloud/android-defaults`; the original source is retained temporarily for legacy CI and rollback while downstream consumers are reconciled.
 
