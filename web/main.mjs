@@ -1,7 +1,8 @@
 import {InvalidContact, MAX_BUNDLE_BYTES, parseBackup, makeBackup, makeVCard, validateContact, searchContacts} from './model.mjs';
 import {openStore} from './store.mjs';
+import {parseVCard,visibleIdentity} from './vcard.mjs';
 const byId = id => document.getElementById(id);
-const inputFile = byId('importFile'), editor = byId('editorDialog'), form = byId('editorForm');
+const inputFile = byId('importFile'), cardFile=byId('importCardFile'), editor = byId('editorDialog'), form = byId('editorForm');
 let db = null, records = [], editingId = null, editingOriginal = null, deleteOriginal = null, activeFilter = 'all', busy = false;
 let noticeTimer = null;
 function notice(message) {
@@ -10,7 +11,7 @@ function notice(message) {
   clearTimeout(noticeTimer); noticeTimer=setTimeout(()=>el.classList.remove('visible'),4700);
 }
 function enabled(value) {
-  for(const id of ['newContact','emptyAdd','importBackup','exportBackup','exportCard']) byId(id).disabled=!value;
+  for(const id of ['newContact','emptyAdd','importBackup','importCard','exportBackup','exportCard']) byId(id).disabled=!value;
 }
 function element(tag, className, text) {
   const node=document.createElement(tag);
@@ -124,13 +125,48 @@ byId('exportCard').addEventListener('click',()=>{
   catch(error){notice(error.message);}
 });
 byId('importBackup').addEventListener('click',()=>{if(db)inputFile.click();});
+byId('importCard').addEventListener('click',()=>{if(db)cardFile.click();});
+async function readStrictText(file) {
+  if(file.size > MAX_BUNDLE_BYTES) throw new InvalidContact('File exceeds the 2 MiB size limit');
+  try { return new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer()); }
+  catch { throw new InvalidContact('Invalid UTF-8 contact file'); }
+}
+cardFile.addEventListener('change',async()=>{
+  const file=cardFile.files?.[0];cardFile.value='';
+  if(!file||!db||busy)return;
+  let incoming;
+  try {
+    incoming=parseVCard(await readStrictText(file));
+    const known=new Set(records.map(visibleIdentity));
+    const staged=new Set();
+    for(const c of incoming) {
+      const key=visibleIdentity(c);
+      if(known.has(key)||staged.has(key)) {
+        throw new InvalidContact('Duplicate visible contact details; no import performed');
+      }
+      staged.add(key);
+    }
+  } catch(error) {
+    notice(error instanceof InvalidContact?error.message:'Unable to read vCard file');
+    return;
+  }
+  const preview=incoming.slice(0,3).map(c=>c.name).join(', ');
+  if(!confirm('Import '+incoming.length+' limited vCards into this browser?\n'
+    +'Preview: '+preview+(incoming.length>3?' …':'')+'\n'
+    +'Only names, single phones, emails and organizations are supported. '
+    +'Favorites and rich details are not included. Existing contacts will not be overwritten.'))return;
+  mutate(async()=>{
+    const count=await db.importNew(incoming,{rejectVisibleDuplicates:true});
+    notice(count+' limited vCards imported locally');
+  });
+});
 inputFile.addEventListener('change',async()=>{
   const file=inputFile.files?.[0];inputFile.value='';
   if(!file||!db||busy)return;
   if(file.size>MAX_BUNDLE_BYTES){notice('Backup exceeds the 2 MiB size limit');return;}
   let incoming;
   try {
-    incoming=parseBackup(await file.text());
+    incoming=parseBackup(await readStrictText(file));
     const known=new Set(records.map(x=>x.id));
     if(incoming.some(x=>known.has(x.id))) {
       notice('Import stopped: matching contact IDs exist. Export a backup and resolve duplicates first.');return;

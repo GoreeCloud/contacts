@@ -1,5 +1,6 @@
 // Isolated, browser-profile IndexedDB database. No fetch, remote API or telemetry.
 import {InvalidContact, MAX_CONTACTS, validateContact, validateCollection} from './model.mjs';
+import {visibleIdentity} from './vcard.mjs';
 const DB = 'goreecloud-contacts-web-v1';
 export function openStore() {
   return new Promise((resolve,reject) => {
@@ -74,16 +75,27 @@ export class ContactStore {
       tx.onabort = () => reject(new Error('Contact changed or deletion failed'));
     });
   }
-  importNew(entries) {
+  importNew(entries, {rejectVisibleDuplicates = false} = {}) {
     const contacts=validateCollection(entries);
     return new Promise((resolve,reject) => {
       const tx=this.db.transaction('contacts','readwrite'), os=tx.objectStore('contacts');
       tx.oncomplete=() => resolve(contacts.length);
-      tx.onabort=() => reject(new Error('Import was rolled back; duplicate ID or storage limit'));
-      const count=os.count();
-      count.onsuccess=() => {
-        if (count.result + contacts.length > MAX_CONTACTS) { tx.abort(); return; }
-        for(const c of contacts) os.add(c); // Atomic: one conflicting ID rolls back every imported row.
+      tx.onabort=() => reject(new Error('Import was rolled back; duplicate ID, visible contact or storage limit'));
+      // One transaction: do not trust a stale UI preview when another browser tab imports.
+      const prior=os.getAll();
+      prior.onsuccess=() => {
+        try {
+          if (prior.result.length + contacts.length > MAX_CONTACTS) { tx.abort(); return; }
+          if (rejectVisibleDuplicates) {
+            const known=new Set(prior.result.map(visibleIdentity));
+            for (const c of contacts) {
+              const key=visibleIdentity(c);
+              if (known.has(key)) { tx.abort(); return; }
+              known.add(key);
+            }
+          }
+          for(const c of contacts) os.add(c); // Any ID conflict aborts every row.
+        } catch { tx.abort(); } // Invalid stored rows cannot result in a false success.
       };
     });
   }

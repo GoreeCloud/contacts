@@ -34,7 +34,8 @@ class MarkupTests(unittest.TestCase):
         self.assertIn({"rel":"icon","type":"image/svg+xml","href":"./assets/goreecloud-logo.svg"},parser.links)
         for token in ('role="status"','aria-live="polite"','aria-label="Contact filters"',
                       'id="editorDialog"','id="deleteDialog"','id="contactList"',
-                      'autocomplete="off"',"connect-src 'none'","form-action 'none'"):
+                      'autocomplete="off"',"connect-src 'none'","form-action 'none'",
+                      'id="importCard"','id="importCardFile"'):
             self.assertIn(token,text)
         self.assertNotIn('http://',text)
         self.assertNotIn('https://',text)

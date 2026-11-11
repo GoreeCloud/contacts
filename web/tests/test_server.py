@@ -32,7 +32,7 @@ class StaticWebTests(unittest.TestCase):
 
     def test_whitelisted_assets_secure_headers_and_no_network_calls(self):
         for path in ("/", "/index.html", "/style.css", "/main.mjs",
-                     "/model.mjs", "/store.mjs", "/gc-ui/tokens.css",
+                     "/model.mjs", "/store.mjs", "/vcard.mjs", "/gc-ui/tokens.css",
                      "/assets/goreecloud-logo.svg"):
             status, headers, body = self.request("GET", path)
             self.assertEqual(status, 200, path)

@@ -10,7 +10,7 @@ Optional guarded per-user installation (explicit execution, no root, no personal
 
 It creates a launcher in ~/.local/bin, a desktop entry in ~/.local/share/applications and application code in ~/.local/share/goreecloud/contacts-linux, honoring XDG overrides. Refuses existing installation paths; no automatic replacement/updater is provided. Private contact data lives separately under ~/.local/share/goreecloud/contacts (0700 dir, 0600 SQLite). Exports are exclusive create-only 0600 files; there is no encryption at rest.
 
-Implemented in source: native list/search/favorites, editor, user-confirmed delete, explicit JSON import/backup and limited vCard export, OS file chooser and native toast feedback, using verified GC UI semantic colors. Neither CardDAV sync nor a deployed backend is included.
+Implemented in source: native list/search/favorites, editor, user-confirmed delete, explicit JSON and limited vCard import, private JSON backup and limited vCard export. Rich vCard properties are rejected; favorites cannot be restored from vCards, OS file chooser and native toast feedback, using verified GC UI semantic colors. Neither CardDAV sync nor a deployed backend is included.
 
 Tests: PYTHONPATH=linux /usr/bin/python3 -m unittest discover -s linux/tests -p test_*.py; PYTHONPATH=linux xvfb-run -a /usr/bin/python3 linux/tests/gtk_smoke.py.
 
