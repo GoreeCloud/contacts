@@ -2,7 +2,7 @@ import {InvalidContact, MAX_BUNDLE_BYTES, parseBackup, makeBackup, makeVCard, va
 import {openStore} from './store.mjs';
 const byId = id => document.getElementById(id);
 const inputFile = byId('importFile'), editor = byId('editorDialog'), form = byId('editorForm');
-let db = null, records = [], editingId = null, deleteId = null, activeFilter = 'all', busy = false;
+let db = null, records = [], editingId = null, editingOriginal = null, deleteOriginal = null, activeFilter = 'all', busy = false;
 let noticeTimer = null;
 function notice(message) {
   const el=byId('announcer');
@@ -39,10 +39,10 @@ function render() {
     const actions=element('div','person-actions');
     const star=button((c.favorite?'Remove ':'Add ') + c.name + (c.favorite?' from favorites':' to favorites'),
       c.favorite?'★':'☆', 'icon-button'+(c.favorite?' is-favorite':''),()=>{
-        mutate(async()=>{ await db.save({...c,favorite:!c.favorite},false); notice(c.favorite?'Removed from favorites':'Added to favorites'); });
+        mutate(async()=>{ await db.save({...c,favorite:!c.favorite},false,c); notice(c.favorite?'Removed from favorites':'Added to favorites'); });
       });
     const edit=button('Edit '+c.name,'✎','icon-button',()=>openEditor(c));
-    const remove=button('Delete '+c.name,'×','icon-button',()=>{deleteId=c.id;byId('deleteTitle').textContent='Delete '+c.name+'?';byId('deleteDialog').showModal();});
+    const remove=button('Delete '+c.name,'×','icon-button',()=>{deleteOriginal=c;byId('deleteTitle').textContent='Delete '+c.name+'?';byId('deleteDialog').showModal();});
     actions.append(star,edit,remove);
     row.append(initial,detail,contact,actions);list.append(row);
   }
@@ -64,6 +64,7 @@ async function mutate(action) {
 }
 function openEditor(c=null) {
   editingId=c?.id??null;
+  editingOriginal=c?{...c}:null;
   form.reset();
   byId('editorTitle').textContent=c?'Edit contact':'New contact';
   byId('formError').hidden=true;
@@ -82,7 +83,7 @@ form.addEventListener('submit',event=>{
   try {checked=validateContact(c);}
   catch(error){byId('formError').textContent=error.message;byId('formError').hidden=false;return;}
   mutate(async()=>{
-    await db.save(checked,!editingId);editor.close();notice(editingId?'Contact updated':'Contact added');
+    await db.save(checked,!editingId,editingOriginal);editor.close();notice(editingId?'Contact updated':'Contact added');
   });
 });
 for(const id of ['cancelEditor','discardEditor']) byId(id).addEventListener('click',()=>editor.close());
@@ -90,10 +91,11 @@ byId('newContact').addEventListener('click',()=>openEditor());
 byId('emptyAdd').addEventListener('click',()=>openEditor());
 byId('cancelDelete').addEventListener('click',()=>byId('deleteDialog').close());
 byId('confirmDelete').addEventListener('click',()=>{
-  const id=deleteId;byId('deleteDialog').close();deleteId=null;
-  mutate(async()=>{await db.remove(id);notice('Contact deleted');});
+  const selected=deleteOriginal;byId('deleteDialog').close();deleteOriginal=null;
+  mutate(async()=>{await db.remove(selected.id,selected);notice('Contact deleted');});
 });
 byId('searchInput').addEventListener('input',()=>{if(db)render();});
+window.addEventListener('focus',()=>{if(db&&!busy)reload().catch(()=>notice('Unable to refresh local contacts'));});
 function changeFilter(name) {
   activeFilter=name;
   for(const [id,on] of [['allFilter',name==='all'],['favoritesFilter',name==='favorites']]) {

@@ -17,6 +17,10 @@ export function openStore() {
     req.onblocked = () => reject(new Error('Close other Contacts tabs to upgrade browser storage'));
   });
 }
+export function sameContact(a,b) {
+  try { return JSON.stringify(validateContact(a)) === JSON.stringify(validateContact(b)); }
+  catch { return false; }
+}
 export class ContactStore {
   constructor(db) { this.db = db; }
   close() { this.db.close(); }
@@ -32,8 +36,10 @@ export class ContactStore {
       tx.onabort = () => reject(new Error('Contact read transaction failed'));
     });
   }
-  save(contact, isNew) {
+  save(contact, isNew, expected = null) {
     const entry = validateContact(contact);
+    const prior = isNew ? null : validateContact(expected);
+    if (!isNew && prior.id !== entry.id) throw new InvalidContact('Contact identity changed');
     return new Promise((resolve,reject) => {
       const tx = this.db.transaction('contacts','readwrite'), os = tx.objectStore('contacts');
       tx.oncomplete = () => resolve();
@@ -47,19 +53,25 @@ export class ContactStore {
       } else {
         const found = os.get(entry.id);
         found.onsuccess = () => {
-          if (!found.result) { tx.abort(); return; }
-          os.put(entry);
+          if (!found.result || !sameContact(found.result,prior)) { tx.abort(); return; }
+          os.put(entry); // Refuse stale editor or another-tab overwrites.
         };
       }
     });
   }
-  remove(id) {
-    if (typeof id !== 'string') throw new InvalidContact('Invalid contact ID');
+  remove(id, expected) {
+    const prior = validateContact(expected);
+    if (id !== prior.id) throw new InvalidContact('Contact identity changed');
     return new Promise((resolve,reject) => {
       const tx = this.db.transaction('contacts','readwrite');
-      tx.objectStore('contacts').delete(id);
+      const os = tx.objectStore('contacts');
+      const current = os.get(id);
+      current.onsuccess = () => {
+        if (!current.result || !sameContact(current.result,prior)) { tx.abort(); return; }
+        os.delete(id);
+      };
       tx.oncomplete = () => resolve();
-      tx.onabort = () => reject(new Error('Contact deletion failed'));
+      tx.onabort = () => reject(new Error('Contact changed or deletion failed'));
     });
   }
   importNew(entries) {

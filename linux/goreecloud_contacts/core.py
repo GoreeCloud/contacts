@@ -213,36 +213,61 @@ class ContactStore:
                                      ("name", "phone", "email", "organization")))]
         return sorted(matched, key=lambda c: (not c["favorite"], fold(c["name"]), c["id"]))
 
-    def save(self, raw: dict, *, is_new: bool):
-        c = validate(raw)
+    def _current(self, ident: str) -> dict | None:
+        row=self.db.execute(
+            "SELECT id,name,phone,email,organization,favorite FROM contacts WHERE id=?",
+            (ident,)).fetchone()
+        if row is None:
+            return None
+        return dict(id=row["id"],name=row["name"],phone=row["phone"],
+                    email=row["email"],organization=row["organization"],
+                    favorite=bool(row["favorite"]))
+
+    def save(self, raw: dict, *, is_new: bool, expected: dict | None = None):
+        c=validate(raw)
+        prior=None
+        if not is_new:
+            if expected is None:
+                raise ContactError("A previous contact version is required")
+            prior=validate(expected)
+            if prior["id"] != c["id"]:
+                raise ContactError("Contact identity changed")
         with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
             if is_new:
                 if self.db.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] >= MAX_CONTACTS:
                     raise ContactError("Contact limit reached")
                 try:
                     self.db.execute("INSERT INTO contacts VALUES (?,?,?,?,?,?)",
-                                    (c["id"], c["name"], c["phone"], c["email"],
-                                     c["organization"], int(c["favorite"])))
+                                    (c["id"],c["name"],c["phone"],c["email"],
+                                     c["organization"],int(c["favorite"])))
                 except sqlite3.IntegrityError as error:
                     raise ContactError("Contact already exists") from error
             else:
-                cur = self.db.execute(
+                if self._current(c["id"]) != prior:
+                    raise ContactError("Contact changed; reload before saving")
+                self.db.execute(
                     "UPDATE contacts SET name=?,phone=?,email=?,organization=?,favorite=? WHERE id=?",
                     (c["name"],c["phone"],c["email"],c["organization"],
                      int(c["favorite"]),c["id"]))
-                if cur.rowcount == 0:
-                    raise ContactError("Contact no longer exists")
 
-    def delete(self, ident: str):
-        if not isinstance(ident, str) or not UUID4.fullmatch(ident):
+    def delete(self, ident: str, *, expected: dict):
+        if not isinstance(ident,str) or not UUID4.fullmatch(ident):
             raise ContactError("Invalid contact ID")
+        prior=validate(expected)
+        if prior["id"] != ident:
+            raise ContactError("Contact identity changed")
         with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if self._current(ident) != prior:
+                raise ContactError("Contact changed; reload before deleting")
             self.db.execute("DELETE FROM contacts WHERE id=?", (ident,))
 
     def import_new(self, incoming: list[dict]) -> int:
         contacts = validate_collection(incoming)
         try:
             with self.db:
+                self.db.execute("BEGIN IMMEDIATE")
                 if self.db.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] + len(contacts) > MAX_CONTACTS:
                     raise ContactError("Contact limit reached")
                 self.db.executemany("INSERT INTO contacts VALUES (?,?,?,?,?,?)", [
