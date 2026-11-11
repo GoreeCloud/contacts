@@ -1,0 +1,45 @@
+name: Contacts real Chrome browser acceptance
+on:
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/web-browser.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/web-browser.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contacts-browser-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-chrome:
+    name: Real browser IndexedDB, editor, search and responsive smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Require trusted preinstalled Chrome and ChromeDriver
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v google-chrome || command -v google-chrome-stable
+          if ! command -v chromedriver; then
+            test -x /usr/local/share/chromedriver-linux64/chromedriver
+          fi
+          python3 --version
+      - name: Synthetic real-browser interaction and private IndexedDB persistence
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONNOUSERSITE: "1"
+        run: |
+          set -euo pipefail
+          timeout 105s python3 web/tests/browser_smoke.py
