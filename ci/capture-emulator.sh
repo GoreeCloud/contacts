@@ -9,13 +9,13 @@ if [[ ! "$api" =~ ^(26|35|36)$ ]]; then
   exit 2
 fi
 # Verify the explicitly targeted disposable emulator before clearing the app.
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/ci/emulator-only.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/ci/emulator-only.sh"
 serial="$(goreecloud_require_disposable_emulator "$api")" || exit 2
 adb_target() { command adb -s "$serial" "$@"; }
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
-source contacts/ci/fresh-hierarchy.sh
-screens="$repo_root/contacts/build/emulator-screenshots"
+source ci/fresh-hierarchy.sh
+screens="$repo_root/build/emulator-screenshots"
 mkdir -p "$screens"
 
 cleanup() {
@@ -26,7 +26,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-adb_target install -r contacts/app/build/outputs/apk/debug/app-debug.apk >/dev/null
+adb_target install -r app/build/outputs/apk/debug/app-debug.apk >/dev/null
 # Ensure screenshots contain NO personal/synthetic contacts, even when
 # instrumentation previously exercised test-only in-memory provider records.
 adb_target shell pm clear com.goreecloud.contacts >/dev/null

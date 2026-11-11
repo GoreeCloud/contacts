@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # No-device synthetic freshness contract. The adb_target function is fully mocked.
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/../.."
-source contacts/ci/fresh-hierarchy.sh
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+source ci/fresh-hierarchy.sh
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
@@ -45,5 +45,5 @@ output="$(capture_fresh_contacts_hierarchy)"
 if grep -Ev '^shell (rm -f|uiautomator dump|cat) /sdcard/window.xml$' "$tmp/calls"; then
   echo 'Unexpected synthetic ADB command' >&2; exit 1
 fi
-grep -Fq 'xml="$(capture_fresh_contacts_hierarchy)" || xml=""' contacts/ci/capture-emulator.sh
+grep -Fq 'xml="$(capture_fresh_contacts_hierarchy)" || xml=""' ci/capture-emulator.sh
 echo 'PASS: Contacts UI readiness never reuses a stale hierarchy after failed delete/dump/read'

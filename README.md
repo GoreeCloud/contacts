@@ -1,6 +1,6 @@
 # GoreeCloud Contacts — Android
 
-A separate native Kotlin Android application in the GoreeCloud Android Defaults monorepo.
+A standalone, native Kotlin Android application in the GoreeCloud Contacts repository. Originally developed as the independent `contacts/` module of `GoreeCloud/android-defaults`; the original source is preserved until migration acceptance.
 
 **Maturity: 0.1.0 development preview, not a certified replacement for the device's contacts application.** Android-only, independent from the Dialer. Minimum API 26; compile and target SDK 35.
 
@@ -33,7 +33,7 @@ From this directory:
 
     gradle :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
 
-Debug output: contacts/app/build/outputs/apk/debug/app-debug.apk.
+Debug output: app/build/outputs/apk/debug/app-debug.apk.
 
 The debug APK is not a signed release or device-accepted installation. CI checks build, unit tests, lint, APK permissions and disposable emulator launch.
 
@@ -51,3 +51,9 @@ vCard import caveats: only FN, TEL, EMAIL, ORG map into the Android insert inten
 Remaining gates: OEM provider behavior (revocation, cancellation, unavailable rows, large collections), full vCard interoperability, synthetic stress tests, API 26/35/36 physical or emulator acceptance, TalkBack, large text, RTL, tablets, night mode and GC UI screenshot audit. Network sync requires separately verified Identity, GoreeShield, Wardveil and Mesh contracts.
 
 See [feature status](docs/FEATURES.md).
+
+## Repository migration and ownership
+
+The standalone repository owns Contacts source and CI going forward. See [migration provenance](docs/MIGRATION.md) for the original monorepo commit and preserved subtree history. The legacy module remains available for rollback until the standalone native build, emulator and real-device acceptance gates are completed. The Android application ID remains `com.goreecloud.contacts`; no change to installed user data or Android permissions is made by this source move.
+
+Copyright is held under the [MIT License](LICENSE) inherited from the source repository; third-party Android, Gradle and Kotlin components retain their own upstream licensing.
