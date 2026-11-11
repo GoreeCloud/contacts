@@ -48,9 +48,9 @@ class ContactsCoreTests(unittest.TestCase):
         self.assertEqual(store.filtered("205")[0]["id"],A["id"])
         self.assertEqual(store.filtered(favorites_only=True),[A])
         changed=dict(B,name="Updated Name",favorite=True)
-        store.save(changed,is_new=False)
+        store.save(changed,is_new=False,expected=B)
         self.assertTrue(store.filtered(favorites_only=True)[0]["favorite"])
-        store.delete(A["id"])
+        store.delete(A["id"],expected=A)
         self.assertEqual(store.list(),[changed])
         self.assertEqual(stat.S_IMODE(self.folder.stat().st_mode),0o700)
         self.assertEqual(stat.S_IMODE(self.file.stat().st_mode),0o600)
@@ -67,6 +67,23 @@ class ContactsCoreTests(unittest.TestCase):
         with self.assertRaises(ContactError):
             store.save(B,is_new=True)
         self.assertEqual(store.list(),[A,B])
+
+    def test_concurrent_edit_and_delete_fail_closed_on_stale_records(self):
+        store=ContactStore(self.file)
+        other=ContactStore(self.file)
+        self.addCleanup(store.close)
+        self.addCleanup(other.close)
+        store.save(A,is_new=True)
+        previous=store.list()[0]
+        latest=dict(A,name="Updated by another Linux window")
+        other.save(latest,is_new=False,expected=previous)
+        with self.assertRaises(ContactError):
+            store.save(dict(A,name="stale update"),is_new=False,expected=previous)
+        with self.assertRaises(ContactError):
+            store.delete(A["id"],expected=previous)
+        self.assertEqual(store.list(),[latest])
+        store.delete(A["id"],expected=latest)
+        self.assertEqual(store.list(),[])
 
     def test_reject_bad_input_surrogates_bidi_hidden_fields_and_unsafe_files(self):
         for bad in (

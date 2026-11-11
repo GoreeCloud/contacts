@@ -39,3 +39,10 @@ test('vCard escaping, line folding and intentionally limited export',()=>{
   assert.ok(long.includes('\r\n '));
   assert.equal(makeVCard([]),'');
 });
+
+import {sameContact} from '../store.mjs';
+test('stale update matcher detects other-tab changes without exposing data',()=>{
+  assert.equal(sameContact(a,{...a}),true);
+  assert.equal(sameContact(a,{...a,phone:'new phone'}),false);
+  assert.equal(sameContact(a,{...a,name:'\u202Espoof'}),false);
+});

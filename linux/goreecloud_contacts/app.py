@@ -196,7 +196,6 @@ class ContactsWindow(Adw.ApplicationWindow):
             label=_label(caption)
             entry=Gtk.Entry()
             entry.set_text(existing[key] if existing else "")
-            entry.set_max_length({"name":160,"phone":80,"email":254,"organization":160}[key])
             label.set_mnemonic_widget(entry)
             box.append(label);box.append(entry)
             inputs[key]=entry
@@ -217,7 +216,7 @@ class ContactsWindow(Adw.ApplicationWindow):
                 values={key:entry.get_text() for key,entry in inputs.items()}
                 if existing:
                     raw=validate(dict(existing,**values,favorite=favorite.get_active()))
-                    self.store.save(raw,is_new=False)
+                    self.store.save(raw,is_new=False,expected=existing)
                 else:
                     raw=new_contact(**values,favorite=favorite.get_active())
                     self.store.save(raw,is_new=True)
@@ -236,7 +235,7 @@ class ContactsWindow(Adw.ApplicationWindow):
 
     def _toggle_favorite(self, contact):
         try:
-            self.store.save(dict(contact,favorite=not contact["favorite"]),is_new=False)
+            self.store.save(dict(contact,favorite=not contact["favorite"]),is_new=False,expected=contact)
             self.refresh()
         except ContactError as error:
             self._message("Unable to update favorite",str(error))
@@ -244,7 +243,7 @@ class ContactsWindow(Adw.ApplicationWindow):
     def _delete_confirm(self, contact):
         def delete():
             try:
-                self.store.delete(contact["id"])
+                self.store.delete(contact["id"],expected=contact)
                 self.refresh()
                 self._toast("Contact deleted")
             except ContactError as error:
@@ -319,7 +318,12 @@ class ContactsWindow(Adw.ApplicationWindow):
             self._message("Export not saved",str(error))
 
     def _close(self, *args):
-        self.store.close()
+        if not getattr(self,"_closed",False):
+            self.store.close()
+            self._closed=True
+        app=self.get_application()
+        if app is not None and getattr(app,"window",None) is self:
+            app.window=None
         return False
 
 

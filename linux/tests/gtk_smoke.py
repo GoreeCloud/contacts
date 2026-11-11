@@ -50,7 +50,18 @@ def main():
         window.favorites.set_active(True)
         window.refresh()
         assert window.people.get_first_child() is not None
-        window.destroy()  # Close callback owns DB connection lifecycle.
+        from gi.repository import GLib
+        app.window=window
+        window.present()
+        context=GLib.MainContext.default()
+        for _ in range(15):
+            while context.pending():
+                context.iteration(False)
+        window.close()  # Native close-request must release DB and clear app state.
+        for _ in range(15):
+            while context.pending():
+                context.iteration(False)
+        assert app.window is None, "A closed window must not be reused on next activation"
     print("GOREECLOUD_CONTACTS_NATIVE_GTK4_LIBADWAITA_SMOKE_PASS")
 
 if __name__=="__main__":
