@@ -263,13 +263,21 @@ class ContactStore:
                 raise ContactError("Contact changed; reload before deleting")
             self.db.execute("DELETE FROM contacts WHERE id=?", (ident,))
 
-    def import_new(self, incoming: list[dict]) -> int:
+    def import_new(self, incoming: list[dict], *, reject_visible_duplicates=False) -> int:
         contacts = validate_collection(incoming)
         try:
             with self.db:
                 self.db.execute("BEGIN IMMEDIATE")
                 if self.db.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] + len(contacts) > MAX_CONTACTS:
                     raise ContactError("Contact limit reached")
+                if reject_visible_duplicates:
+                    from .vcard import visible_identity
+                    known={visible_identity(c) for c in self.list()}
+                    for c in contacts:
+                        key=visible_identity(c)
+                        if key in known:
+                            raise ContactError("Import refused: contact details already exist")
+                        known.add(key)
                 self.db.executemany("INSERT INTO contacts VALUES (?,?,?,?,?,?)", [
                     (c["id"],c["name"],c["phone"],c["email"],c["organization"],int(c["favorite"]))
                     for c in contacts

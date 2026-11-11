@@ -43,6 +43,7 @@
         <div><h2 id="directoryTitle">Your directory</h2><p id="countLabel" class="muted" aria-live="polite">Checking private storage…</p></div>
         <div class="head-actions">
           <button id="importBackup" type="button" class="quiet" disabled>Import backup</button>
+          <button id="importCard" type="button" class="quiet" disabled>Import limited vCard</button>
           <button id="exportBackup" type="button" class="quiet" disabled>Back up</button>
           <button id="exportCard" type="button" class="quiet" disabled>Export vCard</button>
         </div>
@@ -86,6 +87,7 @@
   <div class="dialog-actions"><button id="cancelDelete" type="button" class="quiet">Keep contact</button><button id="confirmDelete" type="button" class="danger">Delete contact</button></div>
 </dialog>
 <input type="file" id="importFile" accept=".json,application/json" hidden>
+<input type="file" id="importCardFile" accept=".vcf,text/vcard" hidden>
 <div class="announcer" id="announcer" role="status" aria-live="polite"></div>
 </body>
 </html>

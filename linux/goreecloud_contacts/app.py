@@ -15,6 +15,7 @@ from .core import (
     ContactError, ContactStore, MAX_BUNDLE_BYTES, make_backup,
     make_vcards, new_contact, read_backup_file, validate, write_new_file
 )
+from .vcard import read_vcards_file, visible_identity
 
 GC_LIGHT = {
     "canvas":"#F6F7FB","surface":"#FFFFFF","tonal":"#EEF0F7",
@@ -105,6 +106,7 @@ class ContactsWindow(Adw.ApplicationWindow):
         transfers = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         for label, handler in (
             ("Import backup",self._import_backup),
+            ("Import limited vCard",self._import_vcard),
             ("Back up contacts",self._export_backup),
             ("Export vCard",self._export_vcard),
         ):
@@ -290,6 +292,38 @@ class ContactsWindow(Adw.ApplicationWindow):
                 "Only the displayed portable fields are stored. "
                 "Existing contacts will not be replaced.", "Import",apply)
         self._choose_file("Select GoreeCloud Contacts JSON backup",
+                          Gtk.FileChooserAction.OPEN,picked)
+
+    def _import_vcard(self):
+        def picked(path):
+            try:
+                incoming=read_vcards_file(path)
+                known={visible_identity(c) for c in self.store.list()}
+                staged=set()
+                for item in incoming:
+                    key=visible_identity(item)
+                    if key in known or key in staged:
+                        raise ContactError("Duplicate visible contact details; no import performed")
+                    staged.add(key)
+            except ContactError as error:
+                self._message("vCard not imported",str(error))
+                return
+            preview=", ".join(c["name"] for c in incoming[:3])
+            if len(incoming)>3:
+                preview+=" …"
+            def apply():
+                try:
+                    count=self.store.import_new(incoming,reject_visible_duplicates=True)
+                    self.refresh()
+                    self._toast(f"{count} limited vCards imported locally")
+                except ContactError as error:
+                    self._message("vCard not imported",str(error))
+            self._confirm("Import " + str(len(incoming)) + " limited vCards?",
+                "Preview: " + preview + "\nOnly name, one phone, one email, and "
+                "organization are supported. Rich fields and favorites will not "
+                "be restored. Existing contacts are never overwritten.",
+                "Import",apply)
+        self._choose_file("Select a limited Contacts vCard",
                           Gtk.FileChooserAction.OPEN,picked)
 
     def _export_backup(self):
