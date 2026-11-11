@@ -1,0 +1,1247 @@
+package com.goreecloud.contacts
+
+import android.Manifest
+import android.app.Activity
+import android.app.AlertDialog
+import android.content.ActivityNotFoundException
+import android.content.ContentValues
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.net.Uri
+import android.os.Bundle
+import android.os.CancellationSignal
+import android.provider.ContactsContract
+import android.text.Editable
+import android.text.TextWatcher
+import android.text.InputType
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowInsets
+import android.widget.BaseAdapter
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ListView
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+import java.io.OutputStreamWriter
+import java.util.Locale
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+
+/**
+ * Native, permission-gated address book. Provider data remains in memory.
+ * All inserts/edits go to Android's user-confirmed Contacts editor.
+ */
+class ContactsActivity : Activity() {
+    private lateinit var root: LinearLayout
+    private lateinit var body: LinearLayout
+    private var tab = "people"
+    private var query = ""
+    private var directorySort = DirectorySort.NAME
+    private var directoryFilter = DirectoryFilter.ALL
+    private var selectedGroup: Long? = null
+    private var selectedContact: Long? = null
+    private var snapshot: DirectorySnapshot? = null
+    private var loading = false
+    private var failure = false
+    private var generation = 0
+    private var signal: CancellationSignal? = null
+    private var destroyed = false
+    private var pendingExport: List<ContactEntry>? = null
+    private val worker = ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
+        ArrayBlockingQueue<Runnable>(2), ThreadPoolExecutor.AbortPolicy())
+    private val favorites by lazy { LocalFavorites(getSharedPreferences("favorites_local", MODE_PRIVATE)) }
+    private val screenProtection by lazy {
+        ScreenProtectionPreference(getSharedPreferences("screen_privacy_local", MODE_PRIVATE))
+    }
+    private val permissionCode = 41
+    private val exportCode = 42
+    private val importCode = 43
+    private val csvExportCode = 44
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        applyScreenProtection()
+        tab = savedInstanceState?.getString("tab")?.takeIf {
+            it in listOf("people", "favorites", "groups", "tools", "detail")
+        } ?: "people"
+        query = savedInstanceState?.getString("query").orEmpty()
+        directorySort = savedInstanceState?.getString("directorySort")?.let {
+            runCatching { DirectorySort.valueOf(it) }.getOrNull()
+        } ?: DirectorySort.NAME
+        directoryFilter = savedInstanceState?.getString("directoryFilter")?.let {
+            runCatching { DirectoryFilter.valueOf(it) }.getOrNull()
+        } ?: DirectoryFilter.ALL
+        selectedGroup = savedInstanceState?.getLong("group", -1L)?.takeIf { it >= 0L }
+        selectedContact = savedInstanceState?.getLong("contact", -1L)?.takeIf { it >= 0L }
+        root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(tint(R.color.canvas))
+            setOnApplyWindowInsetsListener { view, insets ->
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    val safe = insets.getInsets(WindowInsets.Type.systemBars())
+                    view.setPadding(0, safe.top, 0, safe.bottom)
+                } else {
+                    @Suppress("DEPRECATION")
+                    view.setPadding(0, insets.systemWindowInsetTop, 0,
+                        insets.systemWindowInsetBottom)
+                }
+                insets
+            }
+        }
+        setContentView(root)
+        drawShell()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        applyScreenProtection()
+        if (::root.isInitialized) {
+            if (hasAccess()) refresh() else {
+                invalidate()
+                pendingExport = null // Revocation invalidates an awaiting picker snapshot.
+                snapshot = null
+                drawBody()
+            }
+        }
+    }
+
+    override fun onSaveInstanceState(state: Bundle) {
+        state.putString("tab", tab)
+        state.putString("query", query)
+        state.putString("directorySort", directorySort.name)
+        state.putString("directoryFilter", directoryFilter.name)
+        state.putLong("group", selectedGroup ?: -1L)
+        state.putLong("contact", selectedContact ?: -1L)
+        super.onSaveInstanceState(state)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>,
+        grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == permissionCode) {
+            if (hasAccess()) refresh() else {
+                invalidate()
+                pendingExport = null // Revocation invalidates an awaiting picker snapshot.
+                snapshot = null
+                drawBody()
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        destroyed = true
+        invalidate()
+        pendingExport = null
+        worker.shutdownNow()
+        super.onDestroy()
+    }
+
+    /** Optional Android window privacy; private-note dialogs remain protected separately. */
+    private fun applyScreenProtection() {
+        val flag = android.view.WindowManager.LayoutParams.FLAG_SECURE
+        if (screenProtection.isEnabled()) window.addFlags(flag)
+        else window.clearFlags(flag)
+    }
+
+    private fun confirmChangeScreenProtection() {
+        val enable = !screenProtection.isEnabled()
+        AlertDialog.Builder(this)
+            .setTitle(if (enable) "Protect Contacts screen?" else "Allow screen captures?")
+            .setMessage(if (enable)
+                "Android will block most screenshots, screen recording and app previews " +
+                    "of GoreeCloud Contacts. This may also limit screen sharing. " +
+                    "It cannot stop external cameras."
+                else "Screenshots, screen recording and app previews of normal " +
+                    "GoreeCloud Contacts screens may be allowed again. " +
+                    "Private note reveal dialogs stay protected independently.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton(if (enable) "Enable protection" else "Disable protection") { _, _ ->
+                screenProtection.setEnabled(enable)
+                applyScreenProtection()
+                drawBody()
+            }
+            .show()
+    }
+
+    private fun hasAccess() = checkSelfPermission(Manifest.permission.READ_CONTACTS) ==
+        PackageManager.PERMISSION_GRANTED
+
+    private fun invalidate() {
+        generation++
+        signal?.cancel()
+        signal = null
+        loading = false
+    }
+
+    private fun refresh() {
+        if (!hasAccess()) return
+        invalidate()
+        val myGeneration = generation
+        val mySignal = CancellationSignal()
+        signal = mySignal
+        loading = true
+        failure = false
+        drawBody()
+        try {
+            worker.execute {
+                val result = try {
+                    Result.success(ContactsRepository(contentResolver).load(mySignal))
+                } catch (_: Exception) {
+                    Result.failure<DirectorySnapshot>(IllegalStateException("Unable to read contacts"))
+                }
+                runOnUiThread {
+                    if (destroyed || myGeneration != generation || !hasAccess()) return@runOnUiThread
+                    signal = null
+                    loading = false
+                    if (result.isSuccess) {
+                        snapshot = result.getOrNull()
+                        failure = false
+                    } else {
+                        snapshot = null
+                        failure = true
+                    }
+                    drawBody()
+                }
+            }
+        } catch (_: RejectedExecutionException) {
+            loading = false
+            failure = true
+            drawBody()
+        }
+    }
+
+    private fun tint(id: Int): Int = resources.getColor(id, theme)
+    private fun px(dp: Int) = (resources.displayMetrics.density * dp + 0.5f).toInt()
+    private fun shape(color: Int, radius: Int = 18, border: Int? = null) =
+        GradientDrawable().apply {
+            setColor(tint(color))
+            cornerRadius = px(radius).toFloat()
+            border?.let { setStroke(px(1), tint(it)) }
+        }
+
+    private fun label(message: String, size: Float = 16f,
+        color: Int = R.color.ink, bold: Boolean = false) =
+        TextView(this).apply {
+            text = message
+            textSize = size
+            setTextColor(tint(color))
+            if (bold) setTypeface(null, Typeface.BOLD)
+            includeFontPadding = true
+        }
+
+    private fun action(message: String, primary: Boolean = false, onClick: () -> Unit) =
+        label(message, 14f, if (primary) R.color.surface else R.color.accent, true).apply {
+            gravity = Gravity.CENTER
+            minHeight = px(48)
+            setPadding(px(16), px(10), px(16), px(10))
+            background = shape(if (primary) R.color.accent else R.color.accent_soft, 16)
+            contentDescription = message
+            isFocusable = true
+            setOnClickListener { onClick() }
+        }
+
+    private fun card(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(px(18), px(18), px(18), px(18))
+        background = shape(R.color.surface, 22, R.color.outline)
+    }
+
+    private fun column(spacing: Int = 0) = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        if (spacing > 0) setPadding(px(spacing), 0, px(spacing), 0)
+    }
+
+    private fun fillWidth(view: View, bottom: Int = 12) {
+        body.addView(view, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = px(bottom) })
+    }
+
+    private fun drawShell() {
+        root.removeAllViews()
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(px(24), px(20), px(20), px(12))
+        }
+        val titles = column()
+        titles.addView(label("GOREECLOUD  /  CONTACTS", 11f, R.color.accent, true))
+        titles.addView(label(when (tab) {
+            "favorites" -> "Your favorites"
+            "groups" -> "Your circles"
+            "tools" -> "Control center"
+            "detail" -> "Contact profile"
+            else -> "Your people"
+        }, 28f, R.color.ink, true))
+        header.addView(titles, LinearLayout.LayoutParams(0,
+            ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        if (tab == "people" || tab == "favorites") {
+            header.addView(action("+ Add", true) { createContact() })
+        }
+        root.addView(header)
+
+        if (tab == "people" || tab == "favorites") {
+            val field = EditText(this).apply {
+                setSingleLine(true)
+                hint = "Search name, number, email..."
+                inputType = InputType.TYPE_CLASS_TEXT
+                setTextColor(tint(R.color.ink))
+                setHintTextColor(tint(R.color.muted))
+                textSize = 15f
+                background = shape(R.color.surface, 18, R.color.outline)
+                setPadding(px(18), px(14), px(18), px(14))
+                setText(query)
+                setSelection(text.length)
+                addTextChangedListener(object : TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                        query = s?.toString().orEmpty()
+                        drawBody()
+                    }
+                    override fun afterTextChanged(s: Editable?) {}
+                })
+            }
+            root.addView(field, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, px(55)
+            ).apply {
+                leftMargin = px(20); rightMargin = px(20); bottomMargin = px(10)
+            })
+        }
+        body = column(18)
+        root.addView(body, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        drawDock()
+        drawBody()
+    }
+
+    private fun drawDock() {
+        val outer = LinearLayout(this).apply {
+            setPadding(px(6), px(6), px(6), px(6))
+            gravity = Gravity.CENTER_VERTICAL
+            background = shape(R.color.surface, 26, R.color.outline)
+            elevation = px(8).toFloat()
+        }
+        val names = listOf("people" to "People", "favorites" to "Favorites",
+            "groups" to "Groups", "tools" to "Tools")
+        names.forEach { (id, title) ->
+            val selected = tab == id || (tab == "detail" && id == "people")
+            val item = label(title, 12f,
+                if (selected) R.color.accent else R.color.muted, selected).apply {
+                gravity = Gravity.CENTER
+                minHeight = px(52)
+                background = if (selected) shape(R.color.accent_soft, 20) else null
+                contentDescription = title + if (selected) ", selected" else ""
+                isFocusable = true
+                setOnClickListener {
+                    tab = id
+                    selectedContact = null
+                    if (id == "people") selectedGroup = null
+                    drawShell()
+                }
+            }
+            outer.addView(item, LinearLayout.LayoutParams(0, px(52), 1f))
+        }
+        root.addView(outer, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            leftMargin = px(18); rightMargin = px(18); bottomMargin = px(12)
+            topMargin = px(6)
+        })
+    }
+
+    private fun drawBody() {
+        if (!::body.isInitialized) return
+        body.removeAllViews()
+        if (!hasAccess()) {
+            messageState("Your contacts stay yours",
+                "Allow read-only access to show contacts already stored on this device. " +
+                    "No names or numbers are uploaded. Adding a new contact uses Android's editor.",
+                "Allow contact access") {
+                requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), permissionCode)
+            }
+            fillWidth(action("Add contact with Android's editor") { createContact() })
+            fillWidth(action("Import one vCard with Android editor") { selectImportFile() })
+            return
+        }
+        if (loading && snapshot == null) {
+            messageState("Opening your directory", "Reading Android contacts on a background thread.")
+            return
+        }
+        if (failure) {
+            messageState("Directory unavailable",
+                "The Android contacts provider could not be read. Check access and try again.",
+                "Retry") { refresh() }
+            return
+        }
+        val data = snapshot ?: run {
+            messageState("Getting ready", "Refresh to load contacts.", "Refresh") { refresh() }
+            return
+        }
+        when (tab) {
+            "people", "favorites" -> showPeople(data)
+            "groups" -> showGroups(data)
+            "tools" -> showTools(data)
+            "detail" -> showDetail(data)
+        }
+    }
+
+    private fun messageState(title: String, description: String,
+        button: String? = null, click: (() -> Unit)? = null) {
+        val panel = card().apply {
+            setPadding(px(22), px(28), px(22), px(28))
+            addView(label(title, 23f, R.color.ink, true))
+            addView(label(description, 15f, R.color.muted).apply {
+                setPadding(0, px(10), 0, px(20))
+            })
+            if (button != null && click != null) addView(action(button, true, click))
+        }
+        fillWidth(panel)
+    }
+
+    private fun filtered(data: DirectorySnapshot): List<ContactEntry> =
+        DirectoryControls.directory(data.contacts, query, favoriteKeys(),
+            tab == "favorites", selectedGroup, directorySort, directoryFilter)
+
+    private fun chooseDirectorySort() {
+        val values = DirectorySort.entries
+        AlertDialog.Builder(this)
+            .setTitle("Sort contact directory")
+            .setSingleChoiceItems(values.map { it.title }.toTypedArray(),
+                directorySort.ordinal) { dialog, selected ->
+                directorySort = values[selected]
+                dialog.dismiss()
+                drawBody()
+            }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun chooseDirectoryFilter() {
+        val values = DirectoryFilter.entries
+        AlertDialog.Builder(this)
+            .setTitle("Show contacts")
+            .setSingleChoiceItems(values.map { it.title }.toTypedArray(),
+                directoryFilter.ordinal) { dialog, selected ->
+                directoryFilter = values[selected]
+                dialog.dismiss()
+                drawBody()
+            }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun showPeople(data: DirectorySnapshot) {
+        val items = filtered(data)
+        val section = label(
+            if (selectedGroup != null) "GROUP  ·  " + (data.groups.firstOrNull {
+                it.id == selectedGroup
+            }?.name ?: "Contacts") else
+                if (tab == "favorites") "FAVORITE PEOPLE" else "DIRECTORY",
+            12f, R.color.accent, true
+        )
+        section.setPadding(px(6), px(8), 0, px(8))
+        fillWidth(section, 3)
+        fillWidth(label(items.size.toString() + " contacts", 14f, R.color.muted)
+            .apply { setPadding(px(6), 0, 0, px(6)) }, 4)
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        controls.addView(action("Sort: " + directorySort.title) {
+            chooseDirectorySort()
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        controls.addView(action("Show: " + directoryFilter.title) {
+            chooseDirectoryFilter()
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            .apply { leftMargin = px(8) })
+        fillWidth(controls, 10)
+        if (selectedGroup != null) {
+            fillWidth(action("Show all contacts") {
+                selectedGroup = null
+                drawBody()
+            })
+        }
+        if (items.isEmpty()) {
+            messageState("No matching contacts", "Try another search or add a contact.")
+            return
+        }
+        val list = ListView(this).apply {
+            divider = null
+            dividerHeight = px(8)
+            setBackgroundColor(tint(R.color.canvas))
+            clipToPadding = false
+            adapter = ContactAdapter(items)
+            setOnItemClickListener { _, _, position, _ ->
+                selectedContact = items[position].id
+                tab = "detail"
+                drawShell()
+            }
+        }
+        body.addView(list, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+    }
+
+    /** One holder per recycled ListView cell. Never retain the contact model in a View. */
+    private class ContactRowViews(
+        val avatar: TextView,
+        val title: TextView,
+        val description: TextView,
+        val indicator: TextView
+    )
+
+    private inner class ContactAdapter(private val items: List<ContactEntry>) : BaseAdapter() {
+        override fun getCount() = items.size
+        override fun getItem(position: Int): Any = items[position]
+        override fun getItemId(position: Int) = items[position].id
+        override fun hasStableIds(): Boolean = true
+
+        private fun makeRow(): LinearLayout {
+            val row = LinearLayout(this@ContactsActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(px(15), px(12), px(15), px(12))
+                background = shape(R.color.surface, 18, R.color.outline)
+                minimumHeight = px(78)
+            }
+            val avatar = label("", 20f, R.color.accent, true).apply {
+                gravity = Gravity.CENTER
+                background = shape(R.color.avatar, 18)
+            }
+            row.addView(avatar, LinearLayout.LayoutParams(px(46), px(46)))
+            val details = column().apply { setPadding(px(14), 0, 0, 0) }
+            val title = label("", 16f, R.color.ink, true).apply {
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+            val subtitle = label("", 13f, R.color.muted).apply {
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+            details.addView(title)
+            details.addView(subtitle)
+            row.addView(details, LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val indicator = label("", 21f, R.color.accent, true)
+            row.addView(indicator)
+            row.tag = ContactRowViews(avatar, title, subtitle, indicator)
+            return row
+        }
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+            val entry = items[position]
+            val row = (convertView as? LinearLayout)
+                ?.takeIf { it.tag is ContactRowViews } ?: makeRow()
+            val views = row.tag as ContactRowViews
+            // Every user-visible value is rebound; stale recycled rows never
+            // display an old person's name, contact details, or favorite state.
+            views.avatar.text = entry.name.take(1).uppercase(Locale.getDefault())
+            views.title.text = entry.name
+            views.description.text = entry.organization.ifBlank {
+                entry.phones.firstOrNull() ?: entry.emails.firstOrNull() ?: "Contact"
+            }
+            views.indicator.text = if (favoriteKey(entry) in favoriteKeys()) "★" else "›"
+            row.contentDescription = entry.name + ", open contact details"
+            return row
+        }
+    }
+
+    private fun showGroups(data: DirectorySnapshot) {
+        val scroll = ScrollView(this).apply { isFillViewport = true }
+        val container = column()
+        container.addView(label("PEOPLE, ORGANIZED", 12f, R.color.accent, true))
+        container.addView(label("Groups from your Android address book", 15f,
+            R.color.muted).apply { setPadding(0, px(6), 0, px(18)) })
+        if (data.groups.isEmpty()) {
+            container.addView(label("No contact groups are available.", 15f, R.color.muted))
+        }
+        data.groups.forEach { group ->
+            val count = data.contacts.count { group.id in it.groupIds }
+            val item = card().apply {
+                addView(label(group.name, 18f, R.color.ink, true))
+                addView(label(count.toString() + " members", 13f, R.color.muted))
+                isFocusable = true
+                contentDescription = group.name + ", view " + count + " contacts"
+                setOnClickListener {
+                    selectedGroup = group.id
+                    tab = "people"
+                    query = ""
+                    drawShell()
+                }
+            }
+            container.addView(item, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = px(10) })
+        }
+        scroll.addView(container)
+        body.addView(scroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+    }
+
+    private fun showTools(data: DirectorySnapshot) {
+        val scroll = ScrollView(this)
+        val container = column()
+        val top = card()
+        top.addView(label("Your local directory", 20f, R.color.ink, true))
+        top.addView(label(data.contacts.size.toString() + " contacts · " +
+            data.groups.size + " groups", 15f, R.color.muted).apply {
+            setPadding(0, px(7), 0, px(16))
+        })
+        top.addView(action("Refresh from Android", true) { refresh() })
+        container.addView(top, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = px(12) })
+
+        // Read-only, locally calculated dates; nothing is scheduled or shared.
+        val upcoming = UpcomingDates.list(data.contacts, java.time.LocalDate.now())
+        val upcomingCard = card()
+        upcomingCard.addView(label("Upcoming birthdays & anniversaries", 19f,
+            R.color.ink, true))
+        upcomingCard.addView(label("Next 90 days · calculated locally · no notifications",
+            13f, R.color.muted).apply { setPadding(0, px(8), 0, px(12)) })
+        if (upcoming.isEmpty()) {
+            upcomingCard.addView(label("No upcoming birthdays or anniversaries in this period.",
+                14f, R.color.muted))
+        } else {
+            val formatter = java.time.format.DateTimeFormatter.ofPattern(
+                "MMM d", Locale.getDefault())
+            upcoming.forEach { event ->
+                val whenText = if (event.daysUntil == 0L) "Today"
+                    else event.nextDate.format(formatter) +
+                        " · in " + event.daysUntil + " days"
+                upcomingCard.addView(action(event.contactName + " · " + event.kind +
+                    " · " + whenText) {
+                    selectedContact = event.contactId
+                    tab = "detail"
+                    drawShell()
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = px(7) })
+            }
+        }
+        container.addView(upcomingCard, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = px(12) })
+
+        val exportCard = card()
+        exportCard.addView(label("Export a copy", 19f, R.color.ink, true))
+        exportCard.addView(label("Save a vCard containing names, phones, emails and " +
+            "organizations. Other contact fields are not included in this preview.",
+            14f, R.color.muted).apply { setPadding(0, px(8), 0, px(14)) })
+        exportCard.addView(action("Choose export destination") { confirmExport(data.contacts) })
+        exportCard.addView(action("Export favorites as vCard") {
+            confirmExport(ContactLogic.favoriteContacts(data.contacts, favoriteKeys()))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(8) })
+        container.addView(exportCard, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = px(12) })
+        val csvCard = card()
+        csvCard.addView(label("Export a spreadsheet", 19f, R.color.ink, true))
+        csvCard.addView(label("Create a limited CSV copy with names, joined phone numbers, " +
+            "emails and organizations. Formula-like cells are escaped for spreadsheet safety.",
+            14f, R.color.muted).apply { setPadding(0, px(8), 0, px(14)) })
+        csvCard.addView(action("Save CSV export") { confirmCsvExport(data.contacts) })
+        csvCard.addView(action("Export favorites as CSV") {
+            confirmCsvExport(ContactLogic.favoriteContacts(data.contacts, favoriteKeys()))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(8) })
+        container.addView(csvCard, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = px(12) })
+
+        
+        val importCard = card()
+        importCard.addView(label("Import a contact", 19f, R.color.ink, true))
+        importCard.addView(label("Choose one UTF-8 vCard (3.0 or 4.0), preview supported fields, " +
+            "then review and save using Android's contact editor. Unsupported fields are not copied.",
+            14f, R.color.muted).apply { setPadding(0, px(8), 0, px(14)) })
+        importCard.addView(action("Choose a vCard file") { selectImportFile() })
+        container.addView(importCard, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = px(12) })
+
+
+        if (data.groups.isNotEmpty()) {
+            val groupCard = card()
+            groupCard.addView(label("Export a contact group", 19f, R.color.ink, true))
+            groupCard.addView(label("Select an existing Android group and choose vCard or CSV. " +
+                "Only members of that group will be included.",
+                14f, R.color.muted).apply { setPadding(0, px(8), 0, px(14)) })
+            groupCard.addView(action("Select group to export") { chooseGroupExport(data) })
+            container.addView(groupCard, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = px(12) })
+        }
+
+        val clusters = ContactLogic.duplicateClusters(data.contacts)
+        val duplicateCard = card()
+        duplicateCard.addView(label("Potential duplicates", 19f, R.color.ink, true))
+        duplicateCard.addView(label(clusters.size.toString() +
+            " possible matches · Suggestions only; no records will be merged.",
+            14f, R.color.muted).apply { setPadding(0, px(8), 0, px(10)) })
+        clusters.take(15).forEach { cluster ->
+            duplicateCard.addView(action(DuplicateCandidateReview.heading(cluster)) {
+                reviewDuplicateCandidates(cluster)
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = px(7) })
+        }
+        if (clusters.size > 15) duplicateCard.addView(label(
+            "Additional suggestions omitted from this overview.", 12f, R.color.muted))
+        container.addView(duplicateCard, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = px(12) })
+
+        val privacy = card()
+        privacy.addView(label("Privacy by design", 19f, R.color.ink, true))
+        privacy.addView(label("Read-only contact access. No Internet permission, " +
+            "analytics or background cloud synchronization. Favorites remain " +
+            "in private app storage and are excluded from Android backups.",
+            14f, R.color.muted).apply { setPadding(0, px(8), 0, px(4)) })
+        privacy.addView(label(favoriteKeys().size.toString() + " app-local favorite markers",
+            13f, R.color.muted).apply { setPadding(0, px(10), 0, px(10)) })
+        privacy.addView(action("Clear app-local favorites") { confirmClearLocalFavorites() })
+        privacy.addView(label(
+            if (screenProtection.isEnabled()) "Screen capture protection is ON"
+            else "Screen capture protection is OFF",
+            13f, R.color.muted).apply { setPadding(0, px(12), 0, px(8)) })
+        privacy.addView(action(
+            if (screenProtection.isEnabled()) "Disable screen protection"
+            else "Enable screen protection"
+        ) { confirmChangeScreenProtection() })
+        container.addView(privacy)
+        scroll.addView(container)
+        body.addView(scroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+    }
+
+    /** Read-only candidate chooser; the user decides which profile to inspect. */
+    private fun reviewDuplicateCandidates(cluster: List<ContactEntry>) {
+        val choices = DuplicateCandidateReview.choices(cluster)
+        if (choices.isEmpty()) return
+        val title = if (cluster.size > choices.size)
+            "Review suggestions (" + choices.size + " of " + cluster.size + ")"
+        else "Review duplicate suggestions"
+        // Avoid mixing setMessage with setItems: OEM dialogs may not display both.
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setItems(choices.map { it.title }.toTypedArray()) { _, index ->
+                selectedContact = choices[index].contactId
+                tab = "detail"
+                drawShell()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showDetail(data: DirectorySnapshot) {
+        val c = data.contacts.firstOrNull { it.id == selectedContact }
+        if (c == null) {
+            messageState("Contact unavailable", "This contact may have moved or been removed.",
+                "Back to directory") {
+                tab = "people"; selectedContact = null; drawShell()
+            }
+            return
+        }
+        val scroll = ScrollView(this)
+        val content = column()
+        content.addView(action("‹ Back to people") {
+            tab = "people"; selectedContact = null; drawShell()
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = px(12) })
+        val identity = card()
+        identity.addView(label(c.name.take(1).uppercase(Locale.getDefault()), 38f,
+            R.color.accent, true).apply {
+            gravity = Gravity.CENTER
+            background = shape(R.color.avatar, 28)
+            minHeight = px(92)
+        })
+        identity.addView(label(c.name, 25f, R.color.ink, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, px(16), 0, px(4))
+        })
+        if (c.organization.isNotBlank()) identity.addView(
+            label(c.organization, 14f, R.color.muted).apply { gravity = Gravity.CENTER })
+        identity.addView(action(
+            if (favoriteKey(c) in favoriteKeys()) "★ Remove favorite" else "☆ Add favorite"
+        ) {
+            toggleFavorite(c)
+            drawBody()
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(14) })
+        content.addView(identity, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = px(12) })
+
+        val details = card()
+        details.addView(label("Contact details", 19f, R.color.ink, true).apply {
+            setPadding(0, 0, 0, px(12))
+        })
+        c.phones.forEach { number ->
+            details.addView(label(number, 16f, R.color.ink))
+            val actions = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, px(6), 0, px(12))
+            }
+            actions.addView(action("Call") {
+                launch(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null)))
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            actions.addView(action("Message") {
+                launch(Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", number, null)))
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                .apply { leftMargin = px(8) })
+            details.addView(actions)
+        }
+        c.emails.forEach { email ->
+            details.addView(label(email, 15f, R.color.ink).apply {
+                setPadding(0, px(5), 0, px(4))
+            })
+            details.addView(action("Compose email") {
+                launch(Intent(Intent.ACTION_SENDTO, Uri.fromParts("mailto", email, null)))
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = px(10) })
+        }
+        if (c.phones.isEmpty() && c.emails.isEmpty()) details.addView(
+            label("No phone numbers or email addresses", 14f, R.color.muted))
+        content.addView(details, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = px(12) })
+
+        if (c.addresses.isNotEmpty() || c.importantDates.isNotEmpty() ||
+            c.notes.isNotEmpty()) {
+            val extended = card()
+            extended.addView(label("More contact information", 19f, R.color.ink, true)
+                .apply { setPadding(0, 0, 0, px(12)) })
+            c.addresses.forEach { address ->
+                extended.addView(label("Address", 12f, R.color.muted, true))
+                extended.addView(label(address, 15f, R.color.ink).apply {
+                    setPadding(0, px(3), 0, px(8))
+                })
+                extended.addView(action("Open address in maps") {
+                    confirmMapAddress(address)
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = px(14) })
+            }
+            c.importantDates.forEach { date ->
+                extended.addView(label(date.label, 12f, R.color.muted, true))
+                extended.addView(label(date.value, 15f, R.color.ink).apply {
+                    setPadding(0, px(3), 0, px(14))
+                })
+            }
+            if (c.notes.isNotEmpty()) {
+                extended.addView(label(PrivateNotes.hiddenLabel(c.notes),
+                    13f, R.color.muted).apply { setPadding(0, px(3), 0, px(7)) })
+                extended.addView(action("Reveal private notes") {
+                    showPrivateNotes(c.notes)
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = px(14) })
+            }
+            content.addView(extended, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = px(12) })
+        }
+
+        val management = card()
+        management.addView(label("Manage this contact", 19f, R.color.ink, true))
+        management.addView(label("Android's editor confirms any changes before saving.",
+            13f, R.color.muted).apply { setPadding(0, px(6), 0, px(12)) })
+        management.addView(action("Edit in Android Contacts", true) {
+            val uri = if (c.lookupKey.isNotBlank())
+                ContactsContract.Contacts.getLookupUri(c.id, c.lookupKey)
+            else android.content.ContentUris.withAppendedId(
+                ContactsContract.Contacts.CONTENT_URI, c.id)
+            launch(Intent(Intent.ACTION_EDIT, uri))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = px(8) })
+        management.addView(action("Share selected details") { confirmShare(c) })
+        management.addView(action("Export this contact as vCard") {
+            confirmExport(listOf(c))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(8) })
+        management.addView(action("Export this contact as CSV") {
+            confirmCsvExport(listOf(c))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(8) })
+        content.addView(management)
+        scroll.addView(content)
+        body.addView(scroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+    }
+
+    private fun favoriteKeys(): Set<String> = favorites.keys()
+    private fun favoriteKey(c: ContactEntry) = LocalFavorites.keyFor(c)
+    private fun toggleFavorite(c: ContactEntry) = favorites.toggle(c)
+
+    private fun confirmClearLocalFavorites() {
+        val count = favoriteKeys().size
+        if (count == 0) {
+            Toast.makeText(this, "No local favorites to clear", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Clear " + count + " app-local favorites?")
+            .setMessage("This removes only GoreeCloud Contacts' private favorite markers. " +
+                "It does NOT remove contacts, change Android's starred favorites, " +
+                "or change any account. You can mark contacts as favorites again.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Clear local favorites") { _, _ ->
+                favorites.clear()
+                drawBody()
+                Toast.makeText(this, "Local favorites cleared", Toast.LENGTH_SHORT).show()
+            }
+            .show()
+    }
+
+    private fun createContact() {
+        launch(Intent(Intent.ACTION_INSERT).apply {
+            type = ContactsContract.Contacts.CONTENT_TYPE
+        })
+    }
+
+    /** GoreeShield consent before passing a private postal address to a third-party app. */
+    private fun confirmMapAddress(address: String) {
+        val geo = try {
+            AddressNavigation.geoUri(address)
+        } catch (_: IllegalArgumentException) {
+            Toast.makeText(this, "Address cannot be opened", Toast.LENGTH_LONG).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Open this address in a map?")
+            .setMessage("The maps app you select will receive this postal address:\n\n" +
+                address + "\n\nThe receiving app may use the Internet. " +
+                "GoreeCloud Contacts does not send your device location.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Choose maps app") { _, _ ->
+                launch(Intent.createChooser(Intent(Intent.ACTION_VIEW, Uri.parse(geo)),
+                    "Open address with"))
+            }
+            .show()
+    }
+
+    /**
+     * Explicit GoreeShield on-screen disclosure. No persistently revealed state;
+     * closing the dialog removes the raw notes from visible UI.
+     */
+    private fun showPrivateNotes(notes: List<String>) {
+        val text = try {
+            PrivateNotes.reveal(notes)
+        } catch (_: IllegalArgumentException) {
+            Toast.makeText(this, "Private notes unavailable", Toast.LENGTH_LONG).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Private contact notes")
+            .setMessage(text)
+            .setPositiveButton("Hide notes", null)
+            .create().apply {
+                show()
+                // Secure only the disclosed sensitive-content window.
+                window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            }
+    }
+
+    private fun confirmShare(c: ContactEntry) {
+        val fields = try {
+            ContactShare.choices(c)
+        } catch (_: IllegalArgumentException) {
+            Toast.makeText(this, "Too many details to share", Toast.LENGTH_LONG).show()
+            return
+        }
+        // GoreeShield: no personal field is preselected. The recipient app
+        // receives only the user-checked subset, after a second exact preview.
+        val checked = BooleanArray(fields.size)
+        val descriptions = fields.map { field ->
+            val preview = field.value
+                .replace('\r', ' ').replace('\n', ' ').replace('\t', ' ')
+            field.kind.label + ": " + preview.take(96) +
+                if (preview.length > 96) "…" else ""
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Choose details to share")
+            .setMultiChoiceItems(descriptions, checked) { _, index, enabled ->
+                checked[index] = enabled
+            }
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Preview selection") { _, _ ->
+                val selected = checked.indices.filter { checked[it] }.toSet()
+                if (selected.isEmpty()) {
+                    Toast.makeText(this, "Select at least one detail", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                val text = try {
+                    ContactShare.format(fields, selected)
+                } catch (_: IllegalArgumentException) {
+                    Toast.makeText(this, "Invalid or oversized share selection",
+                        Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                AlertDialog.Builder(this)
+                    .setTitle("Confirm shared details")
+                    .setMessage("Only these details will be sent to the app you choose:\n\n" + text)
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Choose receiving app") { _, _ ->
+                        launch(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, text)
+                        }, "Share selected contact details"))
+                    }
+                    .show()
+            }.show()
+    }
+
+    /** Document access is restricted to the single URI the user explicitly selects. */
+    private fun selectImportFile() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, importCode)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, "No document picker available", Toast.LENGTH_LONG).show()
+        } catch (_: SecurityException) {
+            Toast.makeText(this, "Document access unavailable", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun readImportedCard(uri: Uri) {
+        try {
+            worker.execute {
+                val result = runCatching {
+                    val stream = contentResolver.openInputStream(uri)
+                        ?: throw IllegalStateException("Cannot open selected document")
+                    stream.use { VCardImport.parse(VCardImport.readBounded(it)) }
+                }
+                runOnUiThread {
+                    if (destroyed) return@runOnUiThread
+                    val imported = result.getOrNull()
+                    if (imported == null) {
+                        AlertDialog.Builder(this)
+                            .setTitle("Unable to preview vCard")
+                            .setMessage("Select a single UTF-8 vCard 3.0 or 4.0 of up to 128 KB. " +
+                                "This limited importer refuses malformed, unsupported encoded, " +
+                                "or multi-contact files. No contacts were changed.")
+                            .setPositiveButton("OK", null).show()
+                    } else confirmImportedCard(imported)
+                }
+            }
+        } catch (_: RejectedExecutionException) {
+            Toast.makeText(this, "Import worker busy; retry", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun confirmImportedCard(contact: ImportedContactPreview) {
+        val preview = buildString {
+            append(contact.name)
+            contact.phones.forEach { append("\nPhone: ").append(it) }
+            contact.emails.forEach { append("\nEmail: ").append(it) }
+            if (contact.organization.isNotBlank()) {
+                append("\nOrganization: ").append(contact.organization)
+            }
+            if (contact.omittedProperties > 0) {
+                append("\n\n").append(contact.omittedProperties)
+                    .append(" unsupported vCard properties will not be copied.")
+            }
+            append("\n\nAndroid's editor must be reviewed and saved manually. " +
+                "Account-specific fields may not appear in the editor.")
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Review imported contact")
+            .setMessage(preview)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Open Android editor") { _, _ ->
+                val rows = ArrayList<ContentValues>()
+                contact.phones.forEach { number ->
+                    rows.add(ContentValues().apply {
+                        put(ContactsContract.Data.MIMETYPE,
+                            ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
+                        put(ContactsContract.CommonDataKinds.Phone.NUMBER, number)
+                    })
+                }
+                contact.emails.forEach { email ->
+                    rows.add(ContentValues().apply {
+                        put(ContactsContract.Data.MIMETYPE,
+                            ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE)
+                        put(ContactsContract.CommonDataKinds.Email.ADDRESS, email)
+                    })
+                }
+                launch(Intent(Intent.ACTION_INSERT).apply {
+                    type = ContactsContract.Contacts.CONTENT_TYPE
+                    putExtra(ContactsContract.Intents.Insert.NAME, contact.name)
+                    if (contact.organization.isNotBlank()) {
+                        putExtra(ContactsContract.Intents.Insert.COMPANY, contact.organization)
+                    }
+                    putParcelableArrayListExtra(ContactsContract.Intents.Insert.DATA, rows)
+                })
+            }.show()
+    }
+
+    private fun confirmExport(contacts: List<ContactEntry>) {
+        if (contacts.isEmpty()) {
+            Toast.makeText(this, "No contacts to export", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (contacts.size > ContactLogic.MAX_EXPORT_CONTACTS) {
+            Toast.makeText(this, "Too many contacts for this preview export", Toast.LENGTH_LONG).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Export " + contacts.size + " contacts?")
+            .setMessage("A copy containing names, phones, emails and organizations " +
+                "will be saved to the location you select. Other fields are not included.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Choose location") { _, _ ->
+                pendingExport = contacts.toList()
+                val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "text/x-vcard"
+                    putExtra(Intent.EXTRA_TITLE, "GoreeCloud-Contacts.vcf")
+                }
+                try {
+                    @Suppress("DEPRECATION")
+                    startActivityForResult(intent, exportCode)
+                } catch (_: ActivityNotFoundException) {
+                    pendingExport = null
+                    Toast.makeText(this, "No document picker available", Toast.LENGTH_LONG).show()
+                } catch (_: SecurityException) {
+                    pendingExport = null
+                    Toast.makeText(this, "Document access unavailable", Toast.LENGTH_LONG).show()
+                }
+            }.show()
+    }
+
+    /** No group sharing is performed until the user selects scope, format and destination. */
+    private fun chooseGroupExport(data: DirectorySnapshot) {
+        val groups = data.groups
+        if (groups.isEmpty()) return
+        AlertDialog.Builder(this)
+            .setTitle("Choose group")
+            .setItems(groups.map { it.name }.toTypedArray()) { _, index ->
+                val chosen = groups[index]
+                val members = ContactLogic.groupContacts(data.contacts, chosen.id)
+                if (members.isEmpty()) {
+                    Toast.makeText(this, "No contacts in this group", Toast.LENGTH_LONG).show()
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle("Export " + members.size + " members of " + chosen.name)
+                        .setItems(arrayOf("vCard (.vcf)", "CSV (.csv)")) { _, format ->
+                            if (format == 0) confirmExport(members)
+                            else confirmCsvExport(members)
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun confirmCsvExport(contacts: List<ContactEntry>) {
+        if (contacts.isEmpty() || contacts.size > CsvContactsExport.MAX_ROWS) {
+            Toast.makeText(this, "CSV export count is not supported", Toast.LENGTH_LONG).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Export " + contacts.size + " contacts to CSV?")
+            .setMessage("The CSV contains names, phone numbers, email addresses and organizations. " +
+                "Multiple values are joined in one cell. It is not a complete contact backup. " +
+                "You control the destination, which may be cloud-backed.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Choose location") { _, _ ->
+                pendingExport = contacts.toList()
+                val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "text/csv"
+                    putExtra(Intent.EXTRA_TITLE, "GoreeCloud-Contacts.csv")
+                }
+                try {
+                    @Suppress("DEPRECATION")
+                    startActivityForResult(intent, csvExportCode)
+                } catch (_: ActivityNotFoundException) {
+                    pendingExport = null
+                    Toast.makeText(this, "No document picker available", Toast.LENGTH_LONG).show()
+                } catch (_: SecurityException) {
+                    pendingExport = null
+                    Toast.makeText(this, "Document access unavailable", Toast.LENGTH_LONG).show()
+                }
+            }.show()
+    }
+
+    @Deprecated("Android callback retained for API 26–35, no extra library required")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == importCode) {
+            if (resultCode == RESULT_OK) data?.data?.let { readImportedCard(it) }
+            return
+        }
+        if (requestCode != exportCode && requestCode != csvExportCode) return
+        val requested = pendingExport
+        pendingExport = null
+        val destination = data?.data
+        // A document picker selection is not a substitute for live Contacts access.
+        if (!ContactExportAuthorization.mayStart(
+                readContactsGranted = hasAccess(),
+                pickerConfirmed = resultCode == RESULT_OK && destination != null,
+                selectedSnapshotPresent = !requested.isNullOrEmpty()
+            ) || destination == null || requested == null) return
+        try {
+            worker.execute {
+                val success = try {
+                    // Refuse malformed or over-budget contact data before
+                    // creating/opening a document. Never start a partial export
+                    // just because a later contact is too large.
+                    val csv = requestCode == csvExportCode
+                    if (csv) CsvContactsExport.validate(requested)
+                    else ContactLogic.validateExport(requested)
+                    // The queued worker may start after permission was revoked.
+                    if (!hasAccess()) throw SecurityException("Contacts permission revoked")
+                    val stream = contentResolver.openOutputStream(destination, "wt")
+                        ?: throw IllegalStateException("Document cannot be opened")
+                    OutputStreamWriter(stream, Charsets.UTF_8).use { writer ->
+                        if (csv) {
+                            writer.write(CsvContactsExport.header)
+                            requested.forEach { writer.write(CsvContactsExport.row(it)) }
+                        } else {
+                            requested.forEach { writer.write(ContactLogic.vCard(it)) }
+                        }
+                    }
+                    true
+                } catch (_: Exception) { false }
+                runOnUiThread {
+                    if (!destroyed) Toast.makeText(this,
+                        if (success) "Contact copy exported" else "Export refused or interrupted; check the chosen document",
+                        Toast.LENGTH_LONG).show()
+                }
+            }
+        } catch (_: RejectedExecutionException) {
+            Toast.makeText(this, "Export worker busy; retry", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun launch(intent: Intent) {
+        try {
+            startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, "No compatible application found", Toast.LENGTH_SHORT).show()
+        } catch (_: SecurityException) {
+            Toast.makeText(this, "Action not permitted on this device", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    @Deprecated("Back navigation supported on API 26+")
+    override fun onBackPressed() {
+        if (tab == "detail") {
+            tab = "people"
+            selectedContact = null
+            drawShell()
+        } else super.onBackPressed()
+    }
+}
