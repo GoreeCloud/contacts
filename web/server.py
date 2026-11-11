@@ -14,7 +14,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC = frozenset({"/", "/index.html", "/style.css", "/main.mjs",
-                    "/model.mjs", "/store.mjs", "/gc-ui/tokens.css",
+                    "/model.mjs", "/store.mjs", "/vcard.mjs", "/gc-ui/tokens.css",
                     "/assets/goreecloud-logo.svg"})
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; "
        "img-src 'self'; connect-src 'none'; font-src 'none'; "

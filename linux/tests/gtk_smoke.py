@@ -26,6 +26,8 @@ def main():
             while child:
                 yield from widgets(child)
                 child=child.get_next_sibling()
+        transfer_buttons=[v.get_label() for v in widgets(window) if isinstance(v,Gtk.Button)]
+        assert "Import limited vCard" in transfer_buttons
         editor=window.open_editor()
         fields=[v for v in widgets(editor) if isinstance(v,Gtk.Entry)]
         assert len(fields)==4, "Expected native name, phone, email, organization editors"

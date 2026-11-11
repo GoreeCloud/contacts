@@ -9,6 +9,7 @@ import subprocess
 import unittest
 
 from goreecloud_contacts.core import parse_backup,make_backup,make_vcards
+from goreecloud_contacts.vcard import parse_vcards
 
 ROOT=Path(__file__).resolve().parents[2]
 FIXTURE=ROOT/"shared"/"fixtures"/"contacts-v1.json"
@@ -30,6 +31,26 @@ process.stdout.write(JSON.stringify({backup:makeBackup(contacts),vcard:makeVCard
         contacts=parse_backup(FIXTURE.read_text(encoding="utf-8"))
         self.assertEqual(result["backup"],make_backup(contacts))
         self.assertEqual(result["vcard"],make_vcards(contacts))
+
+    @unittest.skipUnless(shutil.which("node"),"Node needed for cross-language development check")
+    def test_web_and_linux_vcard_import_recover_same_limited_fields(self):
+        js = r"""
+import {readFileSync} from 'node:fs';
+import {parseBackup,makeVCard} from './web/model.mjs';
+import {parseVCard} from './web/vcard.mjs';
+const contacts=parseBackup(readFileSync('./shared/fixtures/contacts-v1.json','utf8'));
+const ids=['cccccccc-cccc-4ccc-8ccc-cccccccccccc','dddddddd-dddd-4ddd-8ddd-dddddddddddd'];
+let i=0;
+process.stdout.write(JSON.stringify(parseVCard(makeVCard(contacts),()=>ids[i++])));
+"""
+        process=subprocess.run(["node","--input-type=module","--eval",js],
+                               cwd=ROOT,capture_output=True,text=True,timeout=10)
+        self.assertEqual(process.returncode,0,process.stderr[-350:])
+        source=parse_backup(FIXTURE.read_text(encoding="utf-8"))
+        ids=iter(("cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                  "dddddddd-dddd-4ddd-8ddd-dddddddddddd"))
+        expected=parse_vcards(make_vcards(source),lambda: next(ids))
+        self.assertEqual(json.loads(process.stdout),expected)
 
 if __name__=="__main__":
     unittest.main()

@@ -4,7 +4,7 @@ This is a browser-native, locally persistent Contacts app with no external JS pa
 
 Run from repository root: python3 web/server.py --port 8765. Visit http://127.0.0.1:8765/. This loopback-only static development server is not an authenticated contact-hosting or public production service.
 
-Implemented in source: create/edit/delete, favorites, accent-insensitive search, accessible dialogs and controls, responsive light/dark design, atomic no-overwrite import of strict JSON v1, user-confirmed unencrypted JSON backup and limited vCard 3.0 export. Contacts persist only in the current browser profile's IndexedDB.
+Implemented in source: create/edit/delete, favorites, accent-insensitive search, accessible dialogs and controls, responsive light/dark design, atomic no-overwrite import of strict JSON v1 or the limited vCard 3.0 profile already exported by this app, user-confirmed unencrypted JSON backup and limited vCard export. The vCard importer rejects unsupported rich fields rather than silently dropping information; contact favorites are not restored from vCards. Contacts persist only in the current browser profile's IndexedDB.
 
 Caution: Browser-profile data is not encrypted by this app. Clearing browser data can delete it, and anyone who controls the same unlocked profile can access it. The app never automatically syncs contacts with Linux, Android or a server. Exports create sensitive plaintext files.
 
