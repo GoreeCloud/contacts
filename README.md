@@ -1,6 +1,6 @@
 # GoreeCloud Contacts — Android
 
-A standalone, native Kotlin Android application in the GoreeCloud Contacts repository. Originally developed as the independent `contacts/` module of `GoreeCloud/android-defaults`; the original source is preserved until migration acceptance.
+A standalone, native Kotlin Android application in the GoreeCloud Contacts repository. Originally developed as the independent `contacts/` module of `GoreeCloud/android-defaults`; the original source is retained temporarily for legacy CI and rollback while downstream consumers are reconciled.
 
 **Maturity: 0.1.0 development preview, not a certified replacement for the device's contacts application.** Android-only, independent from the Dialer. Minimum API 26; compile and target SDK 35.
 
@@ -54,6 +54,6 @@ See [feature status](docs/FEATURES.md).
 
 ## Repository migration and ownership
 
-The standalone repository owns Contacts source and CI going forward. See [migration provenance](docs/MIGRATION.md) for the original monorepo commit and preserved subtree history. The legacy module remains available for rollback until the standalone native build, emulator and real-device acceptance gates are completed. The Android application ID remains `com.goreecloud.contacts`; no change to installed user data or Android permissions is made by this source move.
+The standalone repository now owns Contacts source and CI, with source and emulator CI verified on its `main` branch. See [migration provenance and validation](docs/MIGRATION.md) for the original monorepo commit, preserved subtree history and successful exact-head tests. The legacy module remains for CI compatibility and rollback pending consumer reconciliation; physical-device and signed-release acceptance gates remain open. The Android application ID remains `com.goreecloud.contacts`; no change to installed user data or Android permissions is made by this source move.
 
 Copyright is held under the [MIT License](LICENSE) inherited from the source repository; third-party Android, Gradle and Kotlin components retain their own upstream licensing.
