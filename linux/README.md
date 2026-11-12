@@ -12,6 +12,6 @@ It creates a launcher in ~/.local/bin, a desktop entry in ~/.local/share/applica
 
 Implemented in source: native list/search/favorites, editor, user-confirmed delete, explicit JSON and limited vCard import, private JSON backup and limited vCard export. Rich vCard properties are rejected; favorites cannot be restored from vCards, OS file chooser and native toast feedback, using verified GC UI semantic colors. Neither CardDAV sync nor a deployed backend is included.
 
-Tests: PYTHONPATH=linux /usr/bin/python3 -m unittest discover -s linux/tests -p test_*.py; PYTHONPATH=linux xvfb-run -a /usr/bin/python3 linux/tests/gtk_smoke.py.
+Tests: PYTHONPATH=linux /usr/bin/python3 -m unittest discover -s linux/tests -p test_*.py; PYTHONPATH=linux xvfb-run -a /usr/bin/python3 linux/tests/gtk_smoke.py. A separate synthetic installed-launcher smoke checks the actual per-user XDG launcher, SQLite privacy modes, persistence after restart, and package assets: PYTHONPATH=linux /usr/bin/python3 linux/tests/installed_smoke.py. This test uses Xvfb and a disposable profile with denied desktop-portal D-Bus access; it never installs to ~/.local or opens personal contacts.
 
 Physical Linux installation/removal/upgrade acceptance, accessibility tests, signing and Stable release gate remain open. See docs/PLATFORMS.md in the parent repository.
