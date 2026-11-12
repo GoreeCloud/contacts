@@ -68,6 +68,8 @@ class WebDriver:
         return value
 
     def open_session(self, profile: Path):
+        download_root = profile.parent / "synthetic-downloads"
+        download_root.mkdir(mode=0o700)
         args = [
             "--headless=new", "--window-size=1200,850",
             "--disable-background-networking", "--disable-sync",
@@ -78,7 +80,14 @@ class WebDriver:
         value = self.call("POST", "/session", {"capabilities": {"alwaysMatch": {
             "browserName": "chrome",
             "acceptInsecureCerts": False,
-            "goog:chromeOptions": {"args": args},
+            "goog:chromeOptions": {
+                "args": args,
+                "prefs": {
+                    "download.default_directory": str(download_root),
+                    "download.prompt_for_download": False,
+                    "download.directory_upgrade": True,
+                },
+            },
         }}})
         self.session = value["sessionId"]
 
@@ -274,13 +283,101 @@ def smoke() -> None:
                 "return document.getElementById('contactList').childElementCount"
             )==1
 
+            # Consent-gated JSON backup: exercise a real headless Chrome
+            # download, then restore it through the app's native File input.
+            webdriver.execute("""
+                document.querySelector(
+                    'button[title="Add Synthetic Imported Contact to favorites"]'
+                ).click();
+            """)
+            webdriver.wait("return !!document.querySelector('button.is-favorite')", True)
+
+            try:
+                webdriver.execute("document.getElementById('exportBackup').click();")
+            except RuntimeError as error:
+                if "unexpected alert open" not in str(error).lower():
+                    raise
+            webdriver.accept_confirm("This backup is unencrypted")
+            downloaded = home / "synthetic-downloads" / "goreecloud-contacts-backup.json"
+            deadline = time.monotonic() + 15
+            snapshot = None
+            while time.monotonic() < deadline:
+                if downloaded.is_file():
+                    try:
+                        candidate = json.loads(downloaded.read_text(encoding="utf8"))
+                        if candidate.get("format")=="goreecloud.contacts.v1":
+                            snapshot = candidate
+                            break
+                    except (ValueError, OSError, UnicodeError):
+                        pass
+                time.sleep(0.1)
+            if snapshot is None:
+                raise AssertionError("User-confirmed browser JSON backup was not downloaded")
+            assert len(snapshot["contacts"])==1
+            assert snapshot["contacts"][0]["name"]=="Synthetic Imported Contact"
+            assert snapshot["contacts"][0]["favorite"] is True
+            assert snapshot["contacts"][0]["email"]=="import@example.invalid"
+
+            webdriver.execute("""
+                document.querySelector(
+                    'button[title="Delete Synthetic Imported Contact"]'
+                ).click();
+                document.getElementById('confirmDelete').click();
+            """)
+            webdriver.wait("return document.getElementById('countLabel').textContent",
+                           "0 contacts saved locally")
+
+            def offer_json(source):
+                script=(
+                    "const input=document.getElementById('importFile');"
+                    "const value=new File([" + json.dumps(source) +
+                    "],'synthetic-backup.json',{type:'application/json'});"
+                    "const transfer=new DataTransfer();transfer.items.add(value);"
+                    "input.files=transfer.files;"
+                    "input.dispatchEvent(new Event('change',{bubbles:true}));"
+                )
+                try:
+                    webdriver.execute(script)
+                except RuntimeError as error:
+                    if "unexpected alert open" not in str(error).lower():
+                        raise
+
+            offer_json(downloaded.read_text(encoding="utf8"))
+            webdriver.accept_confirm("Import 1 contacts")
+            webdriver.wait("return document.getElementById('countLabel').textContent",
+                           "1 contact saved locally")
+            webdriver.wait("return !!document.querySelector('button.is-favorite')", True)
+            webdriver.navigate(f"http://127.0.0.1:{server.server_port}/")
+            webdriver.wait("return document.getElementById('countLabel').textContent",
+                           "1 contact saved locally")
+            webdriver.wait("return !!document.querySelector('button.is-favorite')", True)
+
+            # Importing the same backup again must not silently overwrite data.
+            offer_json(downloaded.read_text(encoding="utf8"))
+            webdriver.wait(
+                "return document.getElementById('announcer').textContent",
+                "Import stopped: matching contact IDs exist. Export a backup and resolve duplicates first.")
+            assert webdriver.execute(
+                "return document.getElementById('contactList').childElementCount"
+            )==1
+
+            # Reject unknown JSON fields instead of stripping hidden data.
+            malformed=dict(snapshot, extra="not accepted")
+            offer_json(json.dumps(malformed))
+            webdriver.wait(
+                "return document.getElementById('announcer').textContent",
+                "Unexpected or missing fields")
+            assert webdriver.execute(
+                "return document.getElementById('contactList').childElementCount"
+            )==1
+
             # Basic small-screen horizontal overflow regression.
             webdriver.call("POST", f"/session/{webdriver.session}/window/rect",
                            {"width": 390, "height": 800})
             assert webdriver.execute(
                 "return document.documentElement.scrollWidth <= window.innerWidth + 3"
             ), "Unexpected horizontal overflow in compact browser layout"
-            print("GOREECLOUD_CONTACTS_REAL_CHROME_INDEXEDDB_VCARD_EDITOR_FAVORITES_SEARCH_DELETE_PASS")
+            print("GOREECLOUD_CONTACTS_REAL_CHROME_JSON_BACKUP_RESTORE_VCARD_UI_PASS")
         finally:
             webdriver.close()
             driver_process.terminate()
