@@ -21,12 +21,36 @@ APP_ID = "org.goreecloud.Contacts"
 
 
 def safe_new_file(path: Path, contents: str, mode: int):
+    """Exclusively create one private file, removing any incomplete write on failure.
+
+    Existing files are never opened or overwritten. A failed flush/fsync must
+    not leave an executable or desktop entry with truncated contents.
+    """
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(path, flags, mode)
-    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-        handle.write(contents)
-        handle.flush()
-        os.fsync(handle.fileno())
+    fd = None
+    created = False
+    try:
+        fd = os.open(path, flags, mode)
+        created = True
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            fd = None  # File object now owns the descriptor.
+            handle.write(contents)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        if created:
+            try:
+                path.unlink()
+            except OSError:
+                # Propagate the original failure; the installer can still report
+                # an incomplete entry that requires manual review.
+                raise RuntimeError("Incomplete installer file could not be removed")
+        raise
 
 
 def install(data_root: Path, bin_root: Path):
