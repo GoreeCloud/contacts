@@ -109,6 +109,14 @@ jobs:
         run: |
           set -euo pipefail
           timeout 70s xvfb-run -a /usr/bin/python3 linux/tests/gtk_smoke.py
+      - name: Verify guarded user installation launches native GTK and persists private data
+        env:
+          PYTHONPATH: linux
+          PYTHONNOUSERSITE: '1'
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          set -euo pipefail
+          timeout 85s /usr/bin/python3 linux/tests/installed_smoke.py
 
   android-integrity:
     name: Existing Android application identity preserved
