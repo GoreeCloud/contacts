@@ -309,17 +309,32 @@ def write_new_file(path: str | Path, text: str):
         raise ContactError("Export exceeds size limit")
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     created = False
+    fd = None
     try:
         fd = os.open(path, flags, 0o600)
         created = True
         with os.fdopen(fd, "wb") as file:
+            fd = None  # The file context manager now owns the descriptor.
             file.write(data)
             file.flush()
             os.fsync(file.fileno())
-    except OSError as error:
+    except BaseException as error:
+        # A keyboard interruption must not leave a valid-looking but
+        # truncated plaintext contact backup in its intended destination.
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
         if created:
             try:
                 os.unlink(path)
-            except OSError:
+            except FileNotFoundError:
                 pass
-        raise ContactError("Export refused; choose a new writable filename") from error
+            except OSError as cleanup_error:
+                raise ContactError(
+                    "Incomplete export may remain; inspect the destination safely"
+                ) from cleanup_error
+        if isinstance(error, OSError):
+            raise ContactError("Export refused; choose a new writable filename") from error
+        raise
