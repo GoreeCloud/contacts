@@ -5,6 +5,11 @@ const byId = id => document.getElementById(id);
 const inputFile = byId('importFile'), cardFile=byId('importCardFile'), editor = byId('editorDialog'), form = byId('editorForm');
 let db = null, records = [], editingId = null, editingOriginal = null, deleteOriginal = null, activeFilter = 'all', busy = false;
 let noticeTimer = null;
+let pendingLocalRefresh = false;
+// Same-origin/browser-profile invalidation only: broadcast a constant marker,
+// never a name, ID, phone, email, backup, token or contact object.
+const localChanges = typeof BroadcastChannel === 'function' ?
+  new BroadcastChannel('goreecloud-contacts-web-v1-changes') : null;
 function notice(message) {
   const el=byId('announcer');
   el.textContent=message; el.classList.add('visible');
@@ -56,12 +61,35 @@ function render() {
   }
 }
 async function reload() { records=await db.list();render(); }
+function refreshAfterPeerChange() {
+  if(!db)return;
+  if(busy) { pendingLocalRefresh=true; return; }
+  reload().catch(()=>notice('Unable to refresh local contacts'));
+}
+if(localChanges) {
+  localChanges.onmessage=event=>{
+    if(event.data==='changed') refreshAfterPeerChange();
+  };
+}
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden) refreshAfterPeerChange();
+});
 async function mutate(action) {
   if(!db||busy)return;
   busy=true;
-  try {await action();await reload();}
+  try {
+    await action();
+    localChanges?.postMessage('changed'); // Only after the write committed.
+    await reload();
+  }
   catch (error) {notice(error instanceof InvalidContact?error.message:'Unable to complete action; existing data was kept');}
-  finally {busy=false;}
+  finally {
+    busy=false;
+    if(pendingLocalRefresh) {
+      pendingLocalRefresh=false;
+      refreshAfterPeerChange();
+    }
+  }
 }
 function openEditor(c=null) {
   editingId=c?.id??null;
@@ -96,7 +124,7 @@ byId('confirmDelete').addEventListener('click',()=>{
   mutate(async()=>{await db.remove(selected.id,selected);notice('Contact deleted');});
 });
 byId('searchInput').addEventListener('input',()=>{if(db)render();});
-window.addEventListener('focus',()=>{if(db&&!busy)reload().catch(()=>notice('Unable to refresh local contacts'));});
+window.addEventListener('focus',refreshAfterPeerChange);
 function changeFilter(name) {
   activeFilter=name;
   for(const [id,on] of [['allFilter',name==='all'],['favoritesFilter',name==='favorites']]) {
