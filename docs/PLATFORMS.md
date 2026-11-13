@@ -12,7 +12,7 @@
 | Favorites | Browser-local | SQLite-local | Existing app-local favorite markers |
 | Import | JSON v1 or exact limited vCard 3.0 profile, confirmation, atomic no-clobber | JSON v1 or exact limited vCard 3.0 profile, confirmation, atomic no-clobber | Existing single vCard review and system insert |
 | Export | Explicit JSON and limited vCard 3.0 | Explicit JSON and limited vCard 3.0 | Existing scoped vCard/CSV; no full backup |
-| Local offline CLI | No | Available in linux/goreecloud_contacts/cli.py; private SQLite, validation, backup/restore, no network | No |
+| Local offline CLI | No | Available in linux/goreecloud_contacts/cli.py; private SQLite, validation, read-only/no-create import preflight, manual backup/restore, no network | No |
 | Remote sync | None | None | None, no INTERNET permission |
 
 **Important:** Three independent stores are NOT automatic sync. The browser and Linux clients can deliberately exchange portable versioned JSON, preserving exactly the six fields described in shared/CONTRACT.md. Android remains a different on-device Contacts Provider client. Limited vCards omit favorites, photos, relationships, addresses, notes, structured group membership and other rich fields. The new vCard importers accept only the exact FN/N/TEL/EMAIL/ORG vCard 3.0 profile emitted here, generate fresh local IDs, refuse unknown or parameterized properties and reject already-present visible contact details atomically. Third-party or rich Android vCards must not be described as supported if their content fails this strict parser. JSON imports deliberately reject unknown fields, duplicate IDs, oversized input and conflicting existing IDs instead of silently discarding or overwriting personal data.
