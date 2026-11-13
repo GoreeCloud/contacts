@@ -45,6 +45,64 @@ def main():
         assert window.count.get_text()=="1 contacts saved locally"
         assert window.people.get_first_child() is not None
         assert not window.empty.get_visible()
+        # Native export scope is independent of the visible Favorites filter.
+        assert isinstance(window.export_favorites,Gtk.CheckButton)
+        assert not window.export_favorites.get_active()
+        other=new_contact("Synthetic Private","555-0123",
+                          "private@example.invalid",favorite=False)
+        db.save(other,is_new=True)
+        window.refresh()
+        confirmed=[]
+        exported=[]
+        errors=[]
+        original_confirm=window._confirm
+        original_file=window._choose_file
+        original_message=window._message
+        try:
+            def confirm(title,detail,action,callback,**kwargs):
+                confirmed.append((title,detail))
+                callback()
+            def choose(title,action,on_path,**kwargs):
+                suffix=".vcf" if "vCard" in title else ".json"
+                target=path/("scoped-"+str(len(exported))+suffix)
+                exported.append(target)
+                on_path(target)
+            window._confirm=confirm
+            window._choose_file=choose
+            window._message=lambda title,detail: errors.append((title,detail))
+            window.export_favorites.set_active(True)
+            window._export_backup()
+            assert confirmed[-1][0]=="Export 1 contact (favorites only)?"
+            from goreecloud_contacts.core import read_backup_file
+            assert read_backup_file(exported[-1])[0]["name"]=="Synthetic GTK Contact"
+            assert other["name"] not in exported[-1].read_text(encoding="utf8")
+            assert (exported[-1].stat().st_mode & 0o077)==0
+            window._export_vcard()
+            assert "favorites only" in confirmed[-1][0]
+            text=exported[-1].read_text(encoding="utf8")
+            assert text.count("BEGIN:VCARD")==1
+            assert "Synthetic GTK Contact" in text and other["name"] not in text
+            window.export_favorites.set_active(False)
+            window._export_backup()
+            assert "2 contacts (all contacts)" in confirmed[-1][0]
+            assert len(read_backup_file(exported[-1]))==2
+            saved=next(c for c in db.list() if c["favorite"])
+            db.save(dict(saved,favorite=False),is_new=False,expected=saved)
+            prior_count=len(exported)
+            window.export_favorites.set_active(True)
+            window._export_backup()
+            assert len(exported)==prior_count, "Empty favorites attempted file creation"
+            assert errors[-1][0]=="Backup not exported"
+        finally:
+            window._confirm=original_confirm
+            window._choose_file=original_file
+            window._message=original_message
+            window.export_favorites.set_active(False)
+        # Restore the synthetic favorite used by the pre-existing view-filter
+        # smoke, after verifying that a zero-favorites export was refused.
+        reloaded=next(c for c in db.list() if c["id"]==saved["id"])
+        db.save(dict(reloaded,favorite=True),is_new=False,expected=reloaded)
+        window.refresh()
         window.search.set_text("no matching contact")
         window.refresh()
         assert window.empty.get_visible()
