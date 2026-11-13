@@ -1,0 +1,45 @@
+name: Contacts real Chrome keyboard and focus acceptance
+on:
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/web-keyboard.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/web-keyboard.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contacts-keyboard-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-keyboard:
+    name: Actual keyboard, native dialog, focus and 320px acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Require preinstalled Chrome and ChromeDriver
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v google-chrome || command -v google-chrome-stable
+          if ! command -v chromedriver; then
+            test -x /usr/local/share/chromedriver-linux64/chromedriver
+          fi
+          python3 --version
+      - name: Real W3C WebDriver keyboard and accessibility smoke
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          PYTHONNOUSERSITE: '1'
+        run: |
+          set -euo pipefail
+          timeout 170s python3 web/tests/keyboard_smoke.py
