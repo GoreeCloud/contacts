@@ -2,6 +2,8 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -85,6 +87,72 @@ class ContactsCoreTests(unittest.TestCase):
         self.assertEqual(store.list(),[latest])
         store.delete(A["id"],expected=latest)
         self.assertEqual(store.list(),[])
+
+    def test_separate_process_stale_edits_and_imports_cannot_overwrite(self):
+        """Two genuine OS processes share only synthetic private SQLite data.
+
+        Preflight is advisory, not a transaction reservation; actual imports
+        must recheck conflicts under BEGIN IMMEDIATE after another process
+        commits. No real account, contacts, device or network access.
+        """
+        store=ContactStore(self.file)
+        self.addCleanup(store.close)
+        store.save(A,is_new=True)
+        previous=store.list()[0]
+        latest=dict(previous,name="Other process committed")
+        worker = """
+import json,sys
+from goreecloud_contacts.core import ContactStore
+db=ContactStore(sys.argv[1])
+try:
+    command=sys.argv[2]
+    incoming=json.loads(sys.argv[3])
+    if command=='edit':
+        db.save(incoming,is_new=False,expected=json.loads(sys.argv[4]))
+    elif command=='import':
+        db.import_new(incoming,reject_visible_duplicates=bool(int(sys.argv[4])))
+    else:
+        raise RuntimeError('Unsupported synthetic test action')
+finally:
+    db.close()
+"""
+        def invoke(action,incoming,condition):
+            args=[sys.executable,"-c",worker,str(self.file),action,
+                  json.dumps(incoming,ensure_ascii=False),
+                  json.dumps(condition,ensure_ascii=False)
+                  if action=="edit" else str(int(condition))]
+            process=subprocess.run(args,capture_output=True,text=True,timeout=12)
+            self.assertEqual(process.returncode,0,
+                "Synthetic child process failed (no contact details logged)")
+
+        invoke("edit",latest,previous)
+        with self.assertRaises(ContactError):
+            store.save(dict(previous,name="stale parent update"),
+                       is_new=False,expected=previous)
+        with self.assertRaises(ContactError):
+            store.delete(previous["id"],expected=previous)
+        self.assertEqual(store.list(),[latest])
+
+        from goreecloud_contacts.core import check_import
+        self.assertEqual(check_import([B],store.list()),1)
+        invoke("import",[B],False)
+        with self.assertRaises(ContactError):
+            store.import_new([B])
+        self.assertEqual(store.list(),[latest,B])
+
+        # Different IDs, identical visible contact details: a stale vCard
+        # preflight can pass then become a conflict in another process.
+        staged=dict(B,id="cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                    name="Synthetic New Visible",email="new@example.invalid")
+        competitor=dict(staged,id="dddddddd-dddd-4ddd-8ddd-dddddddddddd")
+        self.assertEqual(check_import([staged],store.list(),
+                                      reject_visible_duplicates=True),1)
+        invoke("import",[competitor],True)
+        with self.assertRaises(ContactError):
+            store.import_new([staged],reject_visible_duplicates=True)
+        self.assertNotIn(staged["id"],{c["id"] for c in store.list()})
+        self.assertIn(competitor["id"],{c["id"] for c in store.list()})
+        self.assertEqual(len(store.list()),3)
 
     def test_reject_bad_input_surrogates_bidi_hidden_fields_and_unsafe_files(self):
         for bad in (
