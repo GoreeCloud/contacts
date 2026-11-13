@@ -44,6 +44,19 @@ def main():
         window.refresh()
         assert window.count.get_text()=="1 contacts saved locally"
         assert window.people.get_first_child() is not None
+        # Exercise real GTK row buttons (not a fake callback): both states
+        # must rebind after persistence and expose readable accessible text.
+        def row_button(label):
+            found=[v for v in widgets(window.people) if isinstance(v,Gtk.Button)
+                   and v.get_label()==label]
+            assert len(found)==1, "Missing native favorite action: "+label
+            return found[0]
+        row_button("★ Favorite").emit("clicked")
+        assert not db.list()[0]["favorite"], "Native star failed to remove favorite"
+        assert row_button("☆ Add favorite").get_tooltip_text().startswith("Add Synthetic")
+        row_button("☆ Add favorite").emit("clicked")
+        assert db.list()[0]["favorite"], "Native star failed to restore favorite"
+        assert row_button("★ Favorite").get_tooltip_text().startswith("Remove Synthetic")
         assert not window.empty.get_visible()
         # Native export scope is independent of the visible Favorites filter.
         assert isinstance(window.export_favorites,Gtk.CheckButton)
