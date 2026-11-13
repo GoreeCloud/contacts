@@ -90,6 +90,10 @@ class WebDriver:
                     "download.default_directory": str(download_root),
                     "download.prompt_for_download": False,
                     "download.directory_upgrade": True,
+                    # The synthetic test explicitly clicks JSON and vCard
+                    # export in one session. Permit those two user-initiated
+                    # downloads only in the disposable Chrome test profile.
+                    "profile.default_content_setting_values.automatic_downloads": 1,
                 },
             },
         }}})
@@ -363,7 +367,13 @@ def smoke() -> None:
             deadline=time.monotonic()+15
             while time.monotonic()<deadline and not exported_vcf.is_file():
                 time.sleep(0.1)
-            assert exported_vcf.is_file(), "vCard download did not complete"
+            if not exported_vcf.is_file():
+                # Synthetic filenames and status codes only: never log private
+                # contact values, downloaded file contents or actual user paths.
+                generated=sorted(x.suffix for x in exported_vcf.parent.iterdir()
+                                 if x.is_file())
+                raise AssertionError("vCard download missing; generated file suffixes: "
+                                     +repr(generated))
             assert "EMAIL:newer-tab@example.invalid" in exported_vcf.read_text(encoding="utf8")
 
             webdriver.execute("""
