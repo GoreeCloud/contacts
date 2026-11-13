@@ -114,6 +114,13 @@ class ContactsWindow(Adw.ApplicationWindow):
             control.connect("clicked", lambda _,f=handler: f())
             transfers.append(control)
         root.append(transfers)
+        # Export scope is deliberately separate from the directory's Favorites
+        # view filter; the user must explicitly opt into a subset.
+        self.export_favorites = Gtk.CheckButton(label="Export favorites only")
+        self.export_favorites.set_tooltip_text(
+            "Apply only to manual JSON/vCard exports; default exports all contacts"
+        )
+        root.append(self.export_favorites)
         self.count = _label("Loading contacts…","gc-muted")
         root.append(self.count)
         self.empty = _label("No contacts yet. Select New contact to get started.","gc-muted",wrap=True)
@@ -333,22 +340,49 @@ class ContactsWindow(Adw.ApplicationWindow):
         self._choose_file("Select a limited Contacts vCard",
                           Gtk.FileChooserAction.OPEN,picked)
 
+    def _export_snapshot(self):
+        # Always validate the entire current store. Freeze the selected subset
+        # before displaying the confirmation: file bytes cannot exceed the
+        # exact consented scope/count if another process edits SQLite meanwhile.
+        current = self.store.list()
+        only_favorites = self.export_favorites.get_active()
+        selected = [c for c in current if c["favorite"]] if only_favorites else current
+        if only_favorites and not selected:
+            raise ContactError("No app-local favorites available for export")
+        scope = "favorites only" if only_favorites else "all contacts"
+        count = str(len(selected)) + (" contact" if len(selected) == 1 else " contacts")
+        return selected, scope, count
+
     def _export_backup(self):
-        self._confirm("Export an unencrypted backup?",
-            "The JSON backup includes names and contact details. "
-            "Choose trusted private storage; an existing file will never be overwritten.",
+        try:
+            selected, scope, count = self._export_snapshot()
+            content = make_backup(selected)
+        except ContactError as error:
+            self._message("Backup not exported", str(error))
+            return
+        self._confirm("Export " + count + " (" + scope + ")?",
+            "This is an unencrypted JSON snapshot. Use private storage; "
+            "only the explicitly selected records are included. "
+            "An existing file will never be overwritten.",
             "Choose file",lambda: self._choose_file(
                 "Save Contacts backup",Gtk.FileChooserAction.SAVE,
-                lambda path: self._save_file(path,make_backup(self.store.list())),
+                lambda path: self._save_file(path,content),
                 filename="goreecloud-contacts-backup.json"))
 
     def _export_vcard(self):
-        self._confirm("Export a limited vCard?",
-            "Only names, phones, emails and organizations are exported. "
-            "Favorite markers are not included. Choose trusted private storage.",
+        try:
+            selected, scope, count = self._export_snapshot()
+            content = make_vcards(selected)
+        except ContactError as error:
+            self._message("vCard not exported", str(error))
+            return
+        self._confirm("Export " + count + " (" + scope + ") as limited vCard?",
+            "Only name, phone, email and organization are included. "
+            "Favorite markers and rich fields are NOT retained; file is "
+            "unencrypted and only the confirmed scope is exported.",
             "Choose file",lambda: self._choose_file(
                 "Save vCard",Gtk.FileChooserAction.SAVE,
-                lambda path: self._save_file(path,make_vcards(self.store.list())),
+                lambda path: self._save_file(path,content),
                 filename="goreecloud-contacts.vcf"))
 
     def _save_file(self, path, content):
