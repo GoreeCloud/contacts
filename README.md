@@ -5,7 +5,7 @@
 | Client | Source | Current behavior and storage |
 | --- | --- | --- |
 | [Web app](web/) | web/index.html, web/main.mjs | Local-first browser directory, search, favorites, editor, explicit JSON or limited vCard import, backup and vCard export; IndexedDB in one browser profile |
-| [Linux app](linux/) | linux/goreecloud_contacts/ | Native GTK4/libadwaita directory, editor, favorites, delete confirmation, strict JSON or limited vCard import/export and private SQLite; optional guarded per-user desktop launcher |
+| [Linux app and offline CLI](linux/) | linux/goreecloud_contacts/ | Native GTK4/libadwaita directory, editor, favorites, delete confirmation, strict JSON or limited vCard import/export and private SQLite; optional guarded desktop and CLI launchers |
 | [Android app](android/) | Existing app/ root Gradle project | Native Kotlin Android Contacts Provider client, user-confirmed intents and scoped export; no Internet permission |
 
 Web and Linux share an explicitly versioned **manual transfer** contract ([details](shared/CONTRACT.md)). Android retains its original platform-specific data model and behavior. No automatic sync, CardDAV account access, contacts upload, or hidden data sharing has been added. The user must opt in to file export/import. Exported files are plaintext, and browser/SQLite storage is not encrypted by this application.

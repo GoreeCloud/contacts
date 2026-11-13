@@ -77,9 +77,12 @@ def smoke():
 
         install(app_files, bin_root)
         launcher = bin_root / "goreecloud-contacts"
+        cli_launcher = bin_root / "goreecloud-contacts-cli"
         desktop = app_files / "applications" / "org.goreecloud.Contacts.desktop"
         package = app_files / "goreecloud" / "contacts-linux" / "goreecloud_contacts"
         assert launcher.is_file() and os.access(launcher, os.X_OK)
+        assert cli_launcher.is_file() and os.access(cli_launcher, os.X_OK)
+        assert (package / "cli.py").is_file()
         assert (package / "app.py").is_file()
         assert (package / "vcard.py").is_file()
         assert (package / "assets" / "logo.svg").is_file()
@@ -125,6 +128,14 @@ def smoke():
             store.close()
 
         launch_and_verify(launcher, environment, database, expected=1)
+        # CLI starts from the installed wrapper, not from a developer PYTHONPATH,
+        # and prints only aggregate counts of the disposable synthetic contact.
+        cli=subprocess.run(
+            [str(cli_launcher),"--db",str(database),"status"],
+            env=environment,text=True,capture_output=True,timeout=8)
+        assert cli.returncode==0, "Installed CLI launcher failed"
+        assert cli.stdout.strip()=="1 local contacts; 0 favorites"
+        assert "Synthetic Offline Install Test" not in cli.stdout
         with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
             assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
             assert connection.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] == 1
