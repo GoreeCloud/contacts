@@ -158,6 +158,44 @@ class OfflineCliTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(out.stat().st_mode),0o600)
         self.assertEqual(out.read_text(),make_vcards([A,B]).replace("\r\n","\n"))
 
+    def test_opt_in_favorites_only_export_minimizes_disclosed_contacts(self):
+        from goreecloud_contacts.core import ContactStore, parse_backup
+        self.run_cli("restore","--input",self.fixture,"--yes")
+        subset=self.root/"only-favorites.json"
+        self.run_cli("backup","--output",subset,"--favorites-only",code=2)
+        self.assertFalse(subset.exists())
+        exported=self.run_cli("backup","--output",subset,"--favorites-only",
+                              "--acknowledge-plaintext")
+        self.assertIn("1 contact selected (favorites only)",exported.stdout)
+        self.assertNotIn(A["name"],exported.stdout)
+        self.assertEqual(stat.S_IMODE(subset.stat().st_mode),0o600)
+        self.assertEqual(parse_backup(subset.read_text(encoding="utf8")),[A])
+        self.assertNotIn(B["name"],subset.read_text(encoding="utf8"))
+
+        limited=self.root/"only-favorites.vcf"
+        vcard=self.run_cli("export-vcard","--output",limited,"--favorites-only",
+                           "--acknowledge-plaintext")
+        self.assertIn("favorite flags NOT included",vcard.stdout)
+        self.assertEqual(stat.S_IMODE(limited.stat().st_mode),0o600)
+        self.assertEqual(limited.read_text(),make_vcards([A]).replace("\r\n","\n"))
+        self.assertNotIn(B["name"],limited.read_text())
+
+        # Existing backup filenames are never replaced even when changing scope.
+        self.run_cli("backup","--output",subset,
+                     "--acknowledge-plaintext",code=1)
+        self.assertEqual(parse_backup(subset.read_text(encoding="utf8")),[A])
+
+        store=ContactStore(self.db)
+        try:
+            store.save({**A,"favorite":False},is_new=False,expected=A)
+        finally:
+            store.close()
+        empty=self.root/"no-favorites.json"
+        self.run_cli("backup","--output",empty,"--favorites-only",
+                     "--acknowledge-plaintext",code=1)
+        self.assertFalse(empty.exists(),"Empty favorites export produced a file")
+        self.assertIn("2 local contacts; 0 favorites",self.run_cli("status").stdout)
+
     def test_reject_bidi_unexpected_fields_symlink_and_hidden_logs(self):
         from goreecloud_contacts.core import ContactStore
         rich=self.root/"rich.json"

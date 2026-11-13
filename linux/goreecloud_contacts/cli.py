@@ -35,6 +35,8 @@ def parser() -> argparse.ArgumentParser:
         q.add_argument("--output",type=Path,required=True)
         q.add_argument("--acknowledge-plaintext",action="store_true",required=True,
                        help="Confirm the exported file contains unencrypted personal contact details")
+        q.add_argument("--favorites-only",action="store_true",
+                       help="Export only app-local favorites; default exports all contacts")
     for name,description in (
         ("restore","Restore strict JSON backup into the local store without replacing records"),
         ("import-vcard","Import restricted vCard 3.0; rejects rich fields and duplicate visible records"),
@@ -109,14 +111,25 @@ def execute(args: argparse.Namespace) -> str:
                 raise ContactError("SQLite integrity check failed")
             store.list()  # Also validate every stored contact against the portable schema.
             return "Local SQLite integrity and contact schema: OK"
-        if action=="backup":
-            content=make_backup(store.list())
+        if action in ("backup","export-vcard"):
+            # Validate the entire current directory before selecting a subset,
+            # never reusing a stale UI snapshot or printing contact details.
+            current=store.list()
+            selected=([c for c in current if c["favorite"]]
+                      if args.favorites_only else current)
+            if args.favorites_only and not selected:
+                raise ContactError("No app-local favorites to export")
+            scope="favorites only" if args.favorites_only else "all contacts"
+            count=f"{len(selected)} contact" if len(selected)==1 else f"{len(selected)} contacts"
+            if action=="backup":
+                content=make_backup(selected)
+                write_new_file(args.output,content)
+                return (f"{count} selected ({scope}): private JSON backup "
+                        "created; it is NOT encrypted")
+            content=make_vcards(selected)
             write_new_file(args.output,content)
-            return "Private JSON backup created; it is NOT encrypted"
-        if action=="export-vcard":
-            content=make_vcards(store.list())
-            write_new_file(args.output,content)
-            return "Limited vCard export created; favorites were NOT included; file is NOT encrypted"
+            return (f"{count} selected ({scope}): limited vCard export created; "
+                    "favorite flags NOT included; file is NOT encrypted")
         if action=="restore":
             count=store.import_new(incoming)
             return f"{count} contacts imported atomically (existing IDs never overwritten)"
