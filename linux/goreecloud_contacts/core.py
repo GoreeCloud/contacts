@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+from urllib.parse import quote
 import stat
 import unicodedata
 from uuid import UUID, uuid4
@@ -148,12 +149,17 @@ def make_vcards(records: list[dict]) -> str:
     return output
 
 
-def _private_path(path: str | Path | None) -> Path:
+def data_location(path: str | Path | None = None) -> Path:
+    """Resolve intended local DB location without creating directories or files."""
     if path is None:
         xdg = os.environ.get("XDG_DATA_HOME")
         base = Path(xdg) if xdg else Path.home() / ".local" / "share"
         path = base / "goreecloud" / "contacts" / "contacts.sqlite3"
-    location = Path(os.path.abspath(os.fspath(path)))
+    return Path(os.path.abspath(os.fspath(path)))
+
+
+def _private_path(path: str | Path | None) -> Path:
+    location = data_location(path)
     folder = location.parent
     if folder.is_symlink():
         raise ContactError("Refusing symlinked private data directory")
@@ -170,9 +176,10 @@ def _private_path(path: str | Path | None) -> Path:
 
 
 class ContactStore:
-    def __init__(self, path: str | Path | None = None):
+    def __init__(self, path: str | Path | None = None, *, readonly: bool = False):
         self.path = _private_path(path)
-        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+        flags = (os.O_RDONLY if readonly else (os.O_RDWR | os.O_CREAT))
+        flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
         try:
             fd = os.open(self.path, flags, 0o600)
             info = os.fstat(fd)
@@ -183,13 +190,21 @@ class ContactStore:
         finally:
             if "fd" in locals():
                 os.close(fd)
-        self.db = sqlite3.connect(str(self.path), timeout=5)
+        if readonly:
+            # A preflight must not create a SQLite file or apply schema DDL.
+            # Quote ?/# to avoid interpreting a user-provided path as SQLite URI options.
+            self.db = sqlite3.connect("file:" + quote(str(self.path), safe="/") +
+                                      "?mode=ro", uri=True, timeout=5)
+            self.db.execute("PRAGMA query_only=ON")
+        else:
+            self.db = sqlite3.connect(str(self.path), timeout=5)
         self.db.row_factory = sqlite3.Row
-        self.db.execute("PRAGMA journal_mode=DELETE")
-        self.db.execute("PRAGMA synchronous=FULL")
-        self.db.execute("PRAGMA secure_delete=ON")
         self.db.execute("PRAGMA trusted_schema=OFF")
-        self.db.executescript(SQL_SCHEMA)
+        if not readonly:
+            self.db.execute("PRAGMA journal_mode=DELETE")
+            self.db.execute("PRAGMA synchronous=FULL")
+            self.db.execute("PRAGMA secure_delete=ON")
+            self.db.executescript(SQL_SCHEMA)
 
     def close(self):
         self.db.close()
@@ -268,16 +283,10 @@ class ContactStore:
         try:
             with self.db:
                 self.db.execute("BEGIN IMMEDIATE")
-                if self.db.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] + len(contacts) > MAX_CONTACTS:
-                    raise ContactError("Contact limit reached")
-                if reject_visible_duplicates:
-                    from .vcard import visible_identity
-                    known={visible_identity(c) for c in self.list()}
-                    for c in contacts:
-                        key=visible_identity(c)
-                        if key in known:
-                            raise ContactError("Import refused: contact details already exist")
-                        known.add(key)
+                # Repeat the exact preflight checks INSIDE the write transaction:
+                # another process may change the database after a prior plan.
+                check_import(contacts, self.list(),
+                             reject_visible_duplicates=reject_visible_duplicates)
                 self.db.executemany("INSERT INTO contacts VALUES (?,?,?,?,?,?)", [
                     (c["id"],c["name"],c["phone"],c["email"],c["organization"],int(c["favorite"]))
                     for c in contacts
@@ -285,6 +294,31 @@ class ContactStore:
         except sqlite3.IntegrityError as error:
             raise ContactError("Import was rolled back; duplicate contact ID") from error
         return len(contacts)
+
+
+def check_import(incoming: list[dict], current: list[dict], *,
+                 reject_visible_duplicates=False) -> int:
+    """Pure, fail-closed preflight also reused inside atomic SQLite imports.
+
+    Returns incoming count only. No names, email addresses or contact IDs are
+    logged or exposed to the CLI. Caller MUST repeat under write lock.
+    """
+    contacts = validate_collection(incoming)
+    prior = validate_collection(current)
+    if len(prior) + len(contacts) > MAX_CONTACTS:
+        raise ContactError("Contact limit reached")
+    prior_ids = {c["id"] for c in prior}
+    if any(c["id"] in prior_ids for c in contacts):
+        raise ContactError("Import refused: contact ID already exists")
+    if reject_visible_duplicates:
+        from .vcard import visible_identity
+        known={visible_identity(c) for c in prior}
+        for c in contacts:
+            key=visible_identity(c)
+            if key in known:
+                raise ContactError("Import refused: visible contact details already exist")
+            known.add(key)
+    return len(contacts)
 
 
 def read_backup_file(path: str | Path) -> list[dict]:

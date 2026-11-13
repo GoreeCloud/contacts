@@ -59,6 +59,65 @@ class OfflineCliTests(unittest.TestCase):
             "verify-vcard","--input",vcf).stdout)
         self.assertFalse(self.db.exists(),"File validation must not open local SQLite")
 
+    def test_preflight_import_is_readonly_with_no_contact_leak(self):
+        first=self.run_cli("preflight-restore","--input",self.fixture)
+        self.assertIn("2 incoming contacts; 0 existing contacts",first.stdout)
+        self.assertIn("no import performed",first.stdout)
+        self.assertNotIn(A["name"],first.stdout)
+        self.assertNotIn(A["email"],first.stdout)
+        self.assertFalse(self.db.exists(), "Preflight created a new SQLite store")
+
+        limited=self.root/"synthetic.vcf"
+        limited.write_text(make_vcards([A,B]),encoding="utf8",newline="")
+        result=self.run_cli("preflight-vcard","--input",limited)
+        self.assertIn("2 incoming contacts",result.stdout)
+        self.assertFalse(self.db.exists(), "vCard preflight created SQLite")
+
+        self.run_cli("restore","--input",self.fixture,"--yes")
+        before=self.db.read_bytes()
+        conflict=self.run_cli("preflight-restore","--input",self.fixture,code=1)
+        self.assertNotIn(A["name"],conflict.stderr)
+        conflict=self.run_cli("preflight-vcard","--input",limited,code=1)
+        self.assertNotIn(A["name"],conflict.stderr)
+        self.assertEqual(self.db.read_bytes(),before,"Preflight modified SQLite")
+
+        third={**B,"id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+               "name":"Synthetic Third","email":"third@example.invalid"}
+        only_new=self.root/"new.json"
+        only_new.write_text(make_backup([third]),encoding="utf8")
+        ok=self.run_cli("preflight-restore","--input",only_new)
+        self.assertIn("1 incoming contacts; 2 existing contacts",ok.stdout)
+        self.assertEqual(self.db.read_bytes(),before)
+        self.assertIn("1 contacts imported",self.run_cli(
+            "restore","--input",only_new,"--yes").stdout)
+
+    def test_preflight_refuses_symlinked_existing_database_and_unknown_path(self):
+        # A trusted import preflight must never open a redirected SQLite file.
+        self.run_cli("status")
+        target=self.db
+        redirected=self.private/"redirected.sqlite3"
+        redirected.symlink_to(target)
+        result=subprocess.run(
+            [sys.executable,"-m","goreecloud_contacts.cli",
+             "--db",str(redirected),"preflight-restore",
+             "--input",str(self.fixture)],
+            env=self.env,text=True,capture_output=True,timeout=8)
+        self.assertEqual(result.returncode,1)
+        self.assertNotIn(A["name"],result.stderr)
+        self.assertNotIn(A["email"],result.stderr)
+        self.assertTrue(redirected.is_symlink())
+
+        # Do not create missing parent folders merely to assess a proposed file.
+        absent=self.root/"missing-parent"/"private.sqlite3"
+        result=subprocess.run(
+            [sys.executable,"-m","goreecloud_contacts.cli",
+             "--db",str(absent),"preflight-restore",
+             "--input",str(self.fixture)],
+            env=self.env,text=True,capture_output=True,timeout=8)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertFalse(absent.parent.exists())
+        self.assertFalse(absent.exists())
+
     def test_status_check_backup_and_restore_are_private_and_explicit(self):
         self.assertIn("0 local contacts",self.run_cli("status").stdout)
         self.run_cli("restore","--input",self.fixture,code=2)

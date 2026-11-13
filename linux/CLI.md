@@ -10,12 +10,14 @@ Run from the repository root with `PYTHONPATH=linux /usr/bin/python3 -m goreeclo
 | `check` | Check SQLite integrity and validate portable fields | None |
 | `verify-backup --input /trusted/file.json` | Validate JSON format v1, without opening the database | None |
 | `verify-vcard --input /trusted/file.vcf` | Validate limited vCard 3.0, without opening the database | None |
+| `preflight-restore --input /trusted/file.json` | Check JSON ID conflicts and capacity against existing private SQLite with no import | None |
+| `preflight-vcard --input /trusted/file.vcf` | Check limited vCard visible-detail duplicates and capacity without importing | None |
 | `backup --output /private/new-backup.json --acknowledge-plaintext` | Exclusive-create private JSON backup | Explicit acknowledgement |
 | `export-vcard --output /private/new-contacts.vcf --acknowledge-plaintext` | Exclusive-create limited vCard | Explicit acknowledgement |
 | `restore --input /trusted/file.json --yes` | Atomic import; refuses duplicate IDs and never overwrites | Explicit action |
 | `import-vcard --input /trusted/file.vcf --yes --accept-limited-fields` | Atomic strict import; rejects unsupported rich properties and duplicate visible records | Explicit consent to limited format |
 
-The `--db /private/data/contacts.sqlite3` global option must precede the command, for testing or a deliberately chosen local private store. Omit it to use the desktop client’s normal XDG location. `status` and `check` initialize the local private store if none exists; file-only `verify-*` commands do **not** create or open SQLite. The CLI returns a nonzero exit code and a general error without printing raw contact data on failure.
+The `--db /private/data/contacts.sqlite3` global option must precede the command, for testing or a deliberately chosen local private store. Omit it to use the desktop client’s normal XDG location. `status` and `check` initialize the local private store if none exists; file-only `verify-*` commands do **not** create or open SQLite. The CLI returns a nonzero exit code and a general error without printing raw contact data on failure. Preflight checks inputs before opening private storage. If the database is absent, no directory or SQLite database is created; if present, it is opened SQLite read-only, without schema DDL or contact mutation. Only aggregate incoming/existing counts are printed. Preflight can become stale if another process edits the directory; the final import repeats checks within a write transaction.
 
 **Privacy:** JSON backups and vCards are plaintext, despite owner-only (0600) creation. Use trusted encrypted storage for archives; never upload them to an untrusted service. Exports refuse existing filenames or symlinks, require an explicit acknowledgement, and never overwrite files. The local SQLite database is not encrypted by this application. Names, phones, emails and organizations are personally identifying data—avoid placing their values in terminal command-line arguments, shell history or logs. The CLI deliberately does not expose add/edit commands that would require sensitive values on a command line.
 
