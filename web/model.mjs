@@ -98,6 +98,13 @@ export function makeVCard(records) {
   if (encoder.encode(text).length > MAX_BUNDLE_BYTES) throw new InvalidContact('vCard export exceeds size limit');
   return text;
 }
+/** Opt-in data minimization for manual local export; never use a stale UI list. */
+export function selectExportContacts(records, scope = 'all') {
+  const valid = validateCollection(records);
+  if (scope === 'all') return valid;
+  if (scope === 'favorites') return valid.filter(c => c.favorite);
+  throw new InvalidContact('Unsupported export scope');
+}
 export function searchContacts(records, query) {
   const fold = value => value.normalize('NFKD').replace(/\p{M}/gu,'').toLowerCase();
   const needle = fold(String(query ?? '').trim());

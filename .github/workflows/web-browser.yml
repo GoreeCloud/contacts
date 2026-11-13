@@ -51,3 +51,11 @@ jobs:
         run: |
           set -euo pipefail
           timeout 170s python3 web/tests/two_tab_smoke.py
+      - name: Synthetic Chrome scoped JSON and vCard privacy acceptance
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          PYTHONNOUSERSITE: '1'
+        run: |
+          set -euo pipefail
+          timeout 165s python3 web/tests/scoped_export_smoke.py

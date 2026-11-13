@@ -45,6 +45,9 @@ h1 { font-size:clamp(28px,3.2vw,42px); letter-spacing:-.055em; line-height:1.2; 
 .muted { font-size:13px; color:var(--gc-text-soft); margin:0; }
 .head-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .head-actions .quiet { font-size:12px; min-height:38px; padding-inline:12px; }
+.export-scope { display:inline-flex; align-items:center; gap:8px; color:var(--gc-text-soft); font-size:12px; font-weight:650; }
+.export-scope select { max-width:100%; min-height:38px; padding:0 9px; border:1px solid var(--gc-outline-soft); border-radius:var(--gc-radius-sm); background:var(--gc-surface); color:var(--gc-text); font:inherit; }
+.export-scope select:disabled { opacity:var(--gc-opacity-disabled); }
 .filters { border-top:1px solid var(--gc-outline-soft); background:var(--gc-surface-tonal); padding:18px 32px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
 .search-wrap { display:flex; align-items:center; border:1px solid var(--gc-outline-soft); border-radius:var(--gc-radius-sm); background:var(--gc-surface); flex:1; max-width:520px; min-width:150px; min-height:46px; }
 .search-icon { padding:0 14px; font-size:22px; color:var(--gc-text-soft); }
