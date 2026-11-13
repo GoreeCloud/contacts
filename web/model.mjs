@@ -23,7 +23,10 @@ function plainObject(value, exactKeys) {
 function field(name, value) {
   if (typeof value !== 'string') throw new InvalidContact('Invalid ' + name + ' type');
   const normalized = value.trim().normalize('NFC');
-  if (normalized.length > LIMITS[name] || encoder.encode(normalized).length > LIMITS[name] * 4 ||
+  // Python/Linux limits are Unicode scalar values, not JavaScript UTF-16
+  // code units. This makes portable non-BMP contacts identical on both apps.
+  if (Array.from(normalized).length > LIMITS[name] ||
+      encoder.encode(normalized).length > LIMITS[name] * 4 ||
       UNSAFE.test(normalized) ||
       new TextDecoder('utf-8',{fatal:false}).decode(encoder.encode(normalized)) !== normalized) {
     throw new InvalidContact('Invalid ' + name + ' content');

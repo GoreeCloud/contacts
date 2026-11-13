@@ -25,6 +25,24 @@ test('no injected fields, duplicate IDs, unsafe Unicode or malformed backups',()
   assert.throws(()=>parseBackup('x'.repeat(2*1024*1024+1)),InvalidContact);
   assert.throws(()=>parseBackup('{"format":"goreecloud.contacts.v1","contacts":[],"__proto__":{}}'),InvalidContact);
 });
+test('supplementary Unicode uses portable scalar limits, not UTF-16 code units',()=>{
+  const maxName = '😀'.repeat(160);
+  const maxPhone = '🪁'.repeat(80);
+  const maxEmail = '🪁'.repeat(254);
+  const maxOrg = '🚀'.repeat(160);
+  const allowed = validateContact({...a,name:maxName,phone:maxPhone,
+    email:maxEmail,organization:maxOrg});
+  assert.equal([...allowed.name].length,160);
+  assert.deepEqual(parseBackup(makeBackup([allowed])),[allowed]);
+  assert.match(makeVCard([allowed]),/BEGIN:VCARD/);
+  for (const [key,limit,symbol] of [['name',160,'😀'],['phone',80,'🪁'],
+    ['email',254,'🪁'],['organization',160,'🚀']]) {
+    assert.throws(()=>validateContact({...a,[key]:symbol.repeat(limit+1)}),
+      InvalidContact);
+  }
+  assert.throws(()=>validateContact({...a,name:'😀'.repeat(159)+'\uD800'}),
+    InvalidContact);
+});
 test('vCard escaping, line folding and intentionally limited export',()=>{
   const c={...a,name:'Comma, Semi; Back\\ Slash'};
   const raw=makeVCard([c]);
