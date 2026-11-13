@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {FORMAT, InvalidContact, validateContact, validateCollection, parseBackup, makeBackup, makeVCard, searchContacts} from '../model.mjs';
+import {FORMAT, InvalidContact, validateContact, validateCollection, parseBackup, makeBackup, makeVCard, searchContacts, selectExportContacts} from '../model.mjs';
 const a={id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',name:'Zoë García',phone:'+1 (205) 555-0100',email:'zoe@example.invalid',organization:'GoreeCloud',favorite:true};
 const b={id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',name:'André North',phone:'',email:'',organization:'',favorite:false};
 test('strict roundtrip backup, Unicode and local search',()=>{
@@ -9,6 +9,15 @@ test('strict roundtrip backup, Unicode and local search',()=>{
   assert.equal(searchContacts([a,b],'zoe')[0].name,'Zoë García');
   assert.equal(searchContacts([a,b],'205')[0].id,a.id);
   assert.equal(searchContacts([a,b],'')[0].id,a.id);
+});
+test('opt-in export scope minimizes disclosure and refuses unknown scopes',()=>{
+  assert.deepEqual(selectExportContacts([b,a],'all'),[b,a]);
+  assert.deepEqual(selectExportContacts([b,a],'favorites'),[a]);
+  assert.equal(parseBackup(makeBackup(selectExportContacts([b,a],'favorites'))).length,1);
+  assert.equal(makeVCard(selectExportContacts([b],'favorites')),'');
+  assert.throws(()=>selectExportContacts([a,b],'some other scope'),InvalidContact);
+  assert.throws(()=>selectExportContacts([{...a,notes:'secret'}],'favorites'),InvalidContact);
+  assert.deepEqual([a,b],[a,b],'Selection must not mutate source records');
 });
 test('no injected fields, duplicate IDs, unsafe Unicode or malformed backups',()=>{
   for(const rec of [

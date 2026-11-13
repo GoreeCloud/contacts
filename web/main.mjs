@@ -1,4 +1,4 @@
-import {InvalidContact, MAX_BUNDLE_BYTES, parseBackup, makeBackup, makeVCard, validateContact, searchContacts} from './model.mjs';
+import {InvalidContact, MAX_BUNDLE_BYTES, parseBackup, makeBackup, makeVCard, validateContact, searchContacts, selectExportContacts} from './model.mjs';
 import {openStore} from './store.mjs';
 import {parseVCard,visibleIdentity} from './vcard.mjs';
 const byId = id => document.getElementById(id);
@@ -16,7 +16,7 @@ function notice(message) {
   clearTimeout(noticeTimer); noticeTimer=setTimeout(()=>el.classList.remove('visible'),4700);
 }
 function enabled(value) {
-  for(const id of ['newContact','emptyAdd','importBackup','importCard','exportBackup','exportCard']) byId(id).disabled=!value;
+  for(const id of ['newContact','emptyAdd','importBackup','importCard','exportBackup','exportCard','exportScope']) byId(id).disabled=!value;
 }
 function element(tag, className, text) {
   const node=document.createElement(tag);
@@ -143,19 +143,33 @@ function download(text,fileName,mimeType) {
 // An inactive browser tab can have stale UI state after another tab edits
 // IndexedDB. Exports must capture a validated database snapshot, not cached UI state.
 async function exportFresh({consent, serialize, fileName, mimeType, success}) {
-  if(!db||busy||!confirm(consent))return;
+  if(!db||busy)return;
   busy=true;
   try {
+    // The scope is an explicit choice independent of search, tab or filter.
+    // Both all-contact and favorites-only exports read the current IndexedDB.
+    const scope=byId('exportScope').value;
     const current=await db.list();
-    const encoded=serialize(current); // Abort without downloading on any invalid row.
-    download(encoded,fileName,mimeType);
+    const selected=selectExportContacts(current,scope);
     records=current;
     render();
+    if(scope==='favorites' && selected.length===0) {
+      notice('No favorites available for export');return;
+    }
+    const encoded=serialize(selected); // Validate every record before asking.
+    const label=scope==='favorites'?'Favorites only':'All contacts';
+    const count=selected.length===1?'1 contact':selected.length+' contacts';
+    if(!confirm(consent+'\nExport scope: '+label+' ('+count+').'))return;
+    download(encoded,fileName,mimeType);
     notice(success);
   } catch {
     notice('Export failed; no contact file was prepared');
   } finally {
     busy=false;
+    if(pendingLocalRefresh) {
+      pendingLocalRefresh=false;
+      refreshAfterPeerChange();
+    }
   }
 }
 byId('exportBackup').addEventListener('click',()=>exportFresh({
