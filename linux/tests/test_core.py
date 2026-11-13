@@ -4,6 +4,7 @@ from pathlib import Path
 import stat
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from goreecloud_contacts.core import (
     ContactError, ContactStore, FORMAT, parse_backup, make_backup, make_vcards,
@@ -117,6 +118,27 @@ class ContactsCoreTests(unittest.TestCase):
         link.symlink_to(target)
         with self.assertRaises(ContactError):
             ContactStore(link)
+
+    def test_interrupted_export_never_leaves_a_partial_plaintext_file(self):
+        for failure, expected in (
+            (OSError("synthetic full disk"), ContactError),
+            (KeyboardInterrupt(), KeyboardInterrupt),
+        ):
+            with self.subTest(failure=type(failure).__name__):
+                location=self.folder/("interrupted-"+type(failure).__name__+".json")
+                with patch("goreecloud_contacts.core.os.fsync",
+                           side_effect=failure):
+                    with self.assertRaises(expected):
+                        write_new_file(location,make_backup([A]))
+                self.assertFalse(location.exists(),
+                                 "Interrupted export left a partial sensitive backup")
+        target=self.folder/"protected-existing.json"
+        target.write_text("preserve existing synthetic file")
+        symlink=self.folder/"export-symlink.json"
+        symlink.symlink_to(target)
+        with self.assertRaises(ContactError):
+            write_new_file(symlink,"attempt overwrite")
+        self.assertEqual(target.read_text(),"preserve existing synthetic file")
 
     def test_explicit_file_export_is_exclusive_and_private(self):
         location=self.folder/"backup.json"
