@@ -60,8 +60,10 @@ def smoke():
                     form.elements.namedItem('favorite').checked="""+json.dumps(favorite)+""";
                     form.requestSubmit();
                 """)
+                label = ("1 contact saved locally" if count == 1 else
+                         f"{count} contacts saved locally")
                 browser.wait("return document.getElementById('countLabel').textContent",
-                             f"{count} contacts saved locally")
+                             label)
 
             create("Synthetic Favorite","favorite@example.invalid",True,1)
             create("Synthetic Private","private@example.invalid",False,2)
