@@ -13,6 +13,7 @@ dependencies = []
 
 [project.scripts]
 goreecloud-contacts = "goreecloud_contacts.app:main"
+goreecloud-contacts-cli = "goreecloud_contacts.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -17,7 +17,11 @@ class InstallTests(unittest.TestCase):
             package=data/"goreecloud"/"contacts-linux"/"goreecloud_contacts"/"app.py"
             self.assertTrue(package.is_file())
             wrapper=bins/"goreecloud-contacts"
+            cli=bins/"goreecloud-contacts-cli"
             self.assertTrue(wrapper.exists())
+            self.assertTrue(cli.exists())
+            self.assertIn("goreecloud_contacts.cli",cli.read_text())
+            self.assertEqual(stat.S_IMODE(cli.stat().st_mode),0o700)
             self.assertEqual(stat.S_IMODE(wrapper.stat().st_mode),0o700)
             desktop=data/"applications"/"org.goreecloud.Contacts.desktop"
             self.assertIn(str(wrapper),desktop.read_text())
@@ -50,15 +54,29 @@ class InstallTests(unittest.TestCase):
             personal.mkdir(parents=True,mode=0o700)
             sentinel=personal/"synthetic.sqlite3"
             sentinel.write_bytes(b"preserve this synthetic existing file")
-            # Wrapper fsync succeeds, desktop entry fsync then fails.
+            # GTK and CLI wrapper fsync succeed, desktop entry fsync then fails.
             with patch("install_user.os.fsync",
-                       side_effect=[None,OSError("synthetic desktop fsync failure")]):
+                       side_effect=[None,None,OSError("synthetic desktop fsync failure")]):
                 with self.assertRaises(OSError):
                     install(data,bins)
             self.assertFalse((bins/"goreecloud-contacts").exists())
+            self.assertFalse((bins/"goreecloud-contacts-cli").exists())
             self.assertFalse((data/"applications"/"org.goreecloud.Contacts.desktop").exists())
             self.assertFalse((data/"goreecloud"/"contacts-linux").exists())
             self.assertEqual(sentinel.read_bytes(),b"preserve this synthetic existing file")
+
+    def test_existing_cli_launcher_blocks_install_without_overwriting(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            bins=root/"bin"
+            bins.mkdir(mode=0o700)
+            existing=bins/"goreecloud-contacts-cli"
+            existing.write_text("existing private CLI")
+            with self.assertRaises(ValueError):
+                install(root/"data",bins)
+            self.assertEqual(existing.read_text(),"existing private CLI")
+            self.assertFalse((bins/"goreecloud-contacts").exists())
+            self.assertFalse((root/"data"/"goreecloud"/"contacts-linux").exists())
 
     def test_symlinked_installation_root_refused(self):
         with tempfile.TemporaryDirectory() as temp:

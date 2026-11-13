@@ -63,7 +63,9 @@ def install(data_root: Path, bin_root: Path):
     desktop_dir = data_root / "applications"
     desktop = desktop_dir / (APP_ID + ".desktop")
     launcher = bin_root / "goreecloud-contacts"
-    if any(path.exists() or path.is_symlink() for path in (destination,desktop,launcher)):
+    cli_launcher = bin_root / "goreecloud-contacts-cli"
+    if any(path.exists() or path.is_symlink()
+           for path in (destination,desktop,launcher,cli_launcher)):
         raise ValueError("Existing Contacts installation detected; no files were overwritten")
     for path in (app_parent,desktop_dir,bin_root):
         path.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -89,6 +91,11 @@ def install(data_root: Path, bin_root: Path):
                    "exec /usr/bin/python3 -m goreecloud_contacts.app \"$@\"\n")
         safe_new_file(launcher,wrapper,0o700)
         created.append(launcher)
+        cli_wrapper = ("#!/bin/sh\n" +
+                       "export PYTHONPATH=" + quoted + "\n" +
+                       "exec /usr/bin/python3 -m goreecloud_contacts.cli \"$@\"\n")
+        safe_new_file(cli_launcher,cli_wrapper,0o700)
+        created.append(cli_launcher)
         text = (
             "[Desktop Entry]\nType=Application\nName=GoreeCloud Contacts\n"
             "GenericName=Contact Manager\nComment=Private offline-first personal contacts\n"
@@ -108,7 +115,7 @@ def install(data_root: Path, bin_root: Path):
         if stage.exists():
             shutil.rmtree(stage)
         raise
-    print("Installed GoreeCloud Contacts user launcher and desktop entry.")
+    print("Installed GoreeCloud Contacts GTK and offline CLI launchers and desktop entry.")
     print("Personal contact data was not read, moved or deleted.")
 
 
