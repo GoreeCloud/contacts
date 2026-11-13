@@ -112,18 +112,38 @@ function download(text,fileName,mimeType) {
   const anchor=document.createElement('a');anchor.href=objectURL;anchor.download=fileName;
   anchor.click();setTimeout(()=>URL.revokeObjectURL(objectURL),1000);
 }
-byId('exportBackup').addEventListener('click',()=>{
-  if(!db)return;
-  if(!confirm('This backup is unencrypted. Save it only to storage you trust. Export your local contacts?'))return;
-  try {download(makeBackup(records),'goreecloud-contacts-backup.json','application/json');notice('Backup prepared locally');}
-  catch(error){notice(error.message);}
-});
-byId('exportCard').addEventListener('click',()=>{
-  if(!db)return;
-  if(!confirm('Export names, phones, emails, and organizations as vCard? Favorites are not included.'))return;
-  try {download(makeVCard(records),'goreecloud-contacts.vcf','text/vcard;charset=utf-8');notice('vCard export prepared locally');}
-  catch(error){notice(error.message);}
-});
+// An inactive browser tab can have stale UI state after another tab edits
+// IndexedDB. Exports must capture a validated database snapshot, not cached UI state.
+async function exportFresh({consent, serialize, fileName, mimeType, success}) {
+  if(!db||busy||!confirm(consent))return;
+  busy=true;
+  try {
+    const current=await db.list();
+    const encoded=serialize(current); // Abort without downloading on any invalid row.
+    download(encoded,fileName,mimeType);
+    records=current;
+    render();
+    notice(success);
+  } catch {
+    notice('Export failed; no contact file was prepared');
+  } finally {
+    busy=false;
+  }
+}
+byId('exportBackup').addEventListener('click',()=>exportFresh({
+  consent:'This backup is unencrypted. Save it only to storage you trust. Export your local contacts?',
+  serialize:makeBackup,
+  fileName:'goreecloud-contacts-backup.json',
+  mimeType:'application/json',
+  success:'Backup prepared locally'
+}));
+byId('exportCard').addEventListener('click',()=>exportFresh({
+  consent:'Export names, phones, emails, and organizations as vCard? Favorites are not included.',
+  serialize:makeVCard,
+  fileName:'goreecloud-contacts.vcf',
+  mimeType:'text/vcard;charset=utf-8',
+  success:'vCard export prepared locally'
+}));
 byId('importBackup').addEventListener('click',()=>{if(db)inputFile.click();});
 byId('importCard').addEventListener('click',()=>{if(db)cardFile.click();});
 async function readStrictText(file) {

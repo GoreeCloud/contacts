@@ -56,8 +56,12 @@ class WebDriver:
         payload = json.dumps(body).encode("utf8") if body is not None else None
         request = Request(self.base + path, data=payload, method=method,
                           headers={"Content-Type": "application/json"})
+        # ChromeDriver's initial creation of a real headless Chrome session can
+        # exceed 15 seconds on a busy hosted runner. Keep all other WebDriver
+        # HTTP calls bounded at 15 seconds; allow only startup up to 55 seconds.
+        timeout_seconds=55 if method=="POST" and path=="/session" else 15
         try:
-            with HTTP.open(request, timeout=15) as response:
+            with HTTP.open(request, timeout=timeout_seconds) as response:
                 obj = json.loads(response.read())
         except HTTPError as error:
             detail = error.read(1000).decode("utf8", errors="replace")
@@ -86,6 +90,10 @@ class WebDriver:
                     "download.default_directory": str(download_root),
                     "download.prompt_for_download": False,
                     "download.directory_upgrade": True,
+                    # The synthetic test explicitly clicks JSON and vCard
+                    # export in one session. Permit those two user-initiated
+                    # downloads only in the disposable Chrome test profile.
+                    "profile.default_content_setting_values.automatic_downloads": 1,
                 },
             },
         }}})
@@ -292,6 +300,34 @@ def smoke() -> None:
             """)
             webdriver.wait("return !!document.querySelector('button.is-favorite')", True)
 
+            # Simulate an independent browser tab writing a newer contact into
+            # the same IndexedDB profile, without updating this tab's UI cache.
+            # A cached-record export would silently omit the changed email.
+            latest=webdriver.call("POST",f"/session/{webdriver.session}/execute/async",{
+                "script": """
+                    const done=arguments[arguments.length-1];
+                    const request=indexedDB.open('goreecloud-contacts-web-v1',1);
+                    request.onerror=()=>done('open failed');
+                    request.onsuccess=()=>{
+                        const database=request.result;
+                        const tx=database.transaction('contacts','readwrite');
+                        const store=tx.objectStore('contacts');
+                        const get=store.getAll();
+                        get.onerror=()=>done('read failed');
+                        get.onsuccess=()=>{
+                            if(get.result.length!==1){done('wrong count');return;}
+                            const entry=get.result[0];
+                            entry.email='newer-tab@example.invalid';
+                            store.put(entry);
+                        };
+                        tx.oncomplete=()=>{database.close();done('updated')};
+                        tx.onabort=()=>{database.close();done('transaction failed')};
+                    };
+                """,
+                "args":[]
+            })
+            assert latest=='updated', "Synthetic independent-tab update failed"
+
             try:
                 webdriver.execute("document.getElementById('exportBackup').click();")
             except RuntimeError as error:
@@ -316,7 +352,29 @@ def smoke() -> None:
             assert len(snapshot["contacts"])==1
             assert snapshot["contacts"][0]["name"]=="Synthetic Imported Contact"
             assert snapshot["contacts"][0]["favorite"] is True
-            assert snapshot["contacts"][0]["email"]=="import@example.invalid"
+            assert snapshot["contacts"][0]["email"]=="newer-tab@example.invalid", (
+                "Backup exported stale UI state instead of the latest IndexedDB snapshot"
+            )
+
+            # vCard export has the same freshness requirement.
+            try:
+                webdriver.execute("document.getElementById('exportCard').click();")
+            except RuntimeError as error:
+                if "unexpected alert open" not in str(error).lower():
+                    raise
+            webdriver.accept_confirm("Export names, phones")
+            exported_vcf = home / "synthetic-downloads" / "goreecloud-contacts.vcf"
+            deadline=time.monotonic()+15
+            while time.monotonic()<deadline and not exported_vcf.is_file():
+                time.sleep(0.1)
+            if not exported_vcf.is_file():
+                # Synthetic filenames and status codes only: never log private
+                # contact values, downloaded file contents or actual user paths.
+                generated=sorted(x.suffix for x in exported_vcf.parent.iterdir()
+                                 if x.is_file())
+                raise AssertionError("vCard download missing; generated file suffixes: "
+                                     +repr(generated))
+            assert "EMAIL:newer-tab@example.invalid" in exported_vcf.read_text(encoding="utf8")
 
             webdriver.execute("""
                 document.querySelector(
