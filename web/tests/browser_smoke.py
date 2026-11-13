@@ -56,8 +56,12 @@ class WebDriver:
         payload = json.dumps(body).encode("utf8") if body is not None else None
         request = Request(self.base + path, data=payload, method=method,
                           headers={"Content-Type": "application/json"})
+        # ChromeDriver's initial creation of a real headless Chrome session can
+        # exceed 15 seconds on a busy hosted runner. Keep all other WebDriver
+        # HTTP calls bounded at 15 seconds; allow only startup up to 55 seconds.
+        timeout_seconds=55 if method=="POST" and path=="/session" else 15
         try:
-            with HTTP.open(request, timeout=15) as response:
+            with HTTP.open(request, timeout=timeout_seconds) as response:
                 obj = json.loads(response.read())
         except HTTPError as error:
             detail = error.read(1000).decode("utf8", errors="replace")
