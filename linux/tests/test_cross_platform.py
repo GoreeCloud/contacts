@@ -33,6 +33,34 @@ process.stdout.write(JSON.stringify({backup:makeBackup(contacts),vcard:makeVCard
         self.assertEqual(result["vcard"],make_vcards(contacts))
 
     @unittest.skipUnless(shutil.which("node"),"Node needed for cross-language development check")
+    def test_supplementary_unicode_boundaries_are_lossless_across_both_apps(self):
+        records=[{
+            "id":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            "name":"😀"*160, "phone":"🪁"*80, "email":"",
+            "organization":"🚀"*160, "favorite":True,
+        }]
+        js = r'''
+import {parseBackup,makeBackup,makeVCard} from './web/model.mjs';
+import {parseVCard} from './web/vcard.mjs';
+const source=JSON.parse(process.argv[1]);
+const backup=makeBackup(source);
+const card=makeVCard(source);
+const recovered=parseVCard(card,()=> 'ffffffff-ffff-4fff-8fff-ffffffffffff');
+process.stdout.write(JSON.stringify({backup,card,recovered}));
+'''
+        result=subprocess.run(["node","--input-type=module","--eval",js,
+                               json.dumps(records,ensure_ascii=False)],
+                              cwd=ROOT,capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stderr[-350:])
+        output=json.loads(result.stdout)
+        self.assertEqual(output["backup"],make_backup(records))
+        self.assertEqual(output["card"],make_vcards(records))
+        self.assertEqual(parse_backup(output["backup"]),records)
+        recovered=parse_vcards(output["card"],
+                              lambda:"ffffffff-ffff-4fff-8fff-ffffffffffff")
+        self.assertEqual(output["recovered"],recovered)
+
+    @unittest.skipUnless(shutil.which("node"),"Node needed for cross-language development check")
     def test_web_and_linux_vcard_import_recover_same_limited_fields(self):
         js = r"""
 import {readFileSync} from 'node:fs';
