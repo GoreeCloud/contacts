@@ -154,14 +154,21 @@ class ContactsWindow(Adw.ApplicationWindow):
             details.set_ellipsize(Pango.EllipsizeMode.END)
             summary.append(details)
             bar.append(summary)
-            for label, callback in (
-                ("★" if c["favorite"] else "☆", lambda item=c: self._toggle_favorite(item)),
-                ("Edit",lambda item=c: self.open_editor(item)),
-                ("Delete",lambda item=c: self._delete_confirm(item)),
+            # Favoriting already works in native rows. Label the real button
+            # with a verb/state rather than a glyph alone so keyboard and
+            # screen-reader users need not interpret a lone star symbol.
+            for label, tooltip, callback in (
+                ("★ Favorite" if c["favorite"] else "☆ Add favorite",
+                 ("Remove " + c["name"] + " from favorites") if c["favorite"]
+                 else ("Add " + c["name"] + " to favorites"),
+                 lambda item=c: self._toggle_favorite(item)),
+                ("Edit", "Edit " + c["name"],
+                 lambda item=c: self.open_editor(item)),
+                ("Delete", "Delete " + c["name"],
+                 lambda item=c: self._delete_confirm(item)),
             ):
                 b = Gtk.Button(label=label)
-                b.set_tooltip_text((("Remove " if c["favorite"] else "Add ") +
-                    c["name"] + " favorites") if label in ("★","☆") else label + " " + c["name"])
+                b.set_tooltip_text(tooltip)
                 b.connect("clicked",lambda _,f=callback: f())
                 bar.append(b)
             row.set_child(bar)
