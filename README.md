@@ -1,5 +1,7 @@
 # GoreeCloud Contacts
 
+**Linux framework compliance: migration required.** The current GTK4/libadwaita Linux application does **not** meet the founder’s [mandatory Qt Quick 6.12.0 / Flutter Linux Desktop / Slint-only requirement](https://drive.google.com/file/d/1L-93POcFZE12F-vYxbSc9XquQ-KWOa6f/view) for **all existing Linux graphical apps**, without grandfathering. [Linux migration plan](docs/LINUX_UI_MIGRATION.md) · [source-backed status](docs/linux-ui-framework-status.json) · [issue #25](https://github.com/GoreeCloud/contacts/issues/25). Independent web and Android clients are outside this Linux-only selection rule.
+
 **Three-platform development source:** [Web](web/), [native Linux](linux/) and [native Android](android/) in this public GoreeCloud Contacts repository. Each is an original user-facing client; this repository does not claim production deployment, installed-device acceptance, encryption at rest or automatic cross-device sync.
 
 | Client | Source | Current behavior and storage |
