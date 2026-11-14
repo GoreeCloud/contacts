@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "platform": "linux",
+  "application": "GoreeCloud Contacts",
+  "canonicalStandard": "https://drive.google.com/file/d/1L-93POcFZE12F-vYxbSc9XquQ-KWOa6f/view",
+  "approvedPrimaryUi": [
+    "qt-quick-6.12.0",
+    "flutter-linux-desktop",
+    "slint"
+  ],
+  "currentPrimaryUi": "gtk4-libadwaita",
+  "status": "migration-required",
+  "grandfathered": false,
+  "actualUiEntry": "linux/goreecloud_contacts/app.py",
+  "target": "selection-pending",
+  "targetRuntimeVerified": false,
+  "releasedCompliant": false,
+  "independentClientsUnchanged": [
+    "web",
+    "android"
+  ],
+  "migrationIssue": "https://github.com/GoreeCloud/contacts/issues/25"
+}
