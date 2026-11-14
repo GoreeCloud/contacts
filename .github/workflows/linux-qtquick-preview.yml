@@ -1,0 +1,56 @@
+name: Contacts Qt Quick migration preview (nonpublishing)
+
+on:
+  pull_request:
+    paths:
+      - 'linux/goreecloud_contacts/ContactsPreview.qml'
+      - 'linux/goreecloud_contacts/qt_preview*.py'
+      - 'linux/requirements-qt-preview.txt'
+      - 'linux/tests/test_qt_preview*.py'
+      - '.github/workflows/linux-qtquick-preview.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'linux/goreecloud_contacts/ContactsPreview.qml'
+      - 'linux/goreecloud_contacts/qt_preview*.py'
+      - 'linux/requirements-qt-preview.txt'
+      - 'linux/tests/test_qt_preview*.py'
+      - '.github/workflows/linux-qtquick-preview.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  model:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Compile preview sources and verify offline search parity
+        env:
+          PYTHONPATH: linux
+        run: |
+          python3 -m compileall -q linux/goreecloud_contacts/qt_preview_model.py linux/goreecloud_contacts/qt_preview.py
+          python3 -m unittest discover -s linux/tests -p 'test_qt_preview_model.py' -v
+
+  qml-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: linux
+      QT_QPA_PLATFORM: offscreen
+      QT_QUICK_BACKEND: software
+      QT_QUICK_CONTROLS_STYLE: Basic
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install headless Linux Qt libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libegl1 libopengl0 libxkbcommon0 libxcb-cursor0 libfontconfig1
+      - name: Install Qt 6.12.0 in isolated CI environment
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --disable-pip-version-check --only-binary=:all: -r linux/requirements-qt-preview.txt
+          .venv/bin/python -c 'from PySide6.QtCore import qVersion; assert qVersion() == "6.12.0", qVersion()'
+      - name: Load Qt Quick window and verify SQLite read-only snapshot on synthetic records
+        run: timeout 40s .venv/bin/python -m unittest discover -s linux/tests -p 'test_qt_preview_runtime.py' -v
