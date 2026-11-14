@@ -9,9 +9,16 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QUICK_BACKEND", "software")
 os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
 
-from PySide6.QtCore import QUrl, qVersion
-from PySide6.QtGui import QGuiApplication, QWindow
-from PySide6.QtQml import QQmlApplicationEngine
+try:
+    from PySide6.QtCore import QUrl, qVersion
+    from PySide6.QtGui import QGuiApplication, QWindow
+    from PySide6.QtQml import QQmlApplicationEngine
+except ModuleNotFoundError as error:
+    # Existing GTK/CLI test suites intentionally have no Qt dependency.
+    # Dedicated Qt CI installs PySide6 and requires this test to execute.
+    if error.name == "PySide6" and os.environ.get("GOREE_CONTACTS_REQUIRE_QT") != "1":
+        raise unittest.SkipTest("PySide6 is optional outside the dedicated Qt preview CI")
+    raise
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from goreecloud_contacts.core import ContactStore, new_contact
